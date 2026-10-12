@@ -17,7 +17,18 @@ jobs:
       - name: Fetch fonts
         run: ./scripts/fetch_fonts.sh
       - name: Build
-        run: ./gradlew --no-daemon --stacktrace assembleRelease
+        run: ./gradlew --no-daemon assembleRelease 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+      - name: Publish build errors
+        if: failure()
+        run: |
+          grep -E "^e: |error:|What went wrong|Could not|> " build.log | head -400 > errors.txt || true
+          tail -150 build.log >> errors.txt
+          git config user.name "ci"; git config user.email "ci@users.noreply.github.com"
+          git checkout --orphan ci-logs
+          git rm -rfq --cached . >/dev/null
+          git add -f errors.txt
+          git commit -qm "build ${{ github.run_number }} errors"
+          git push -f origin ci-logs
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk Lumen-${{ github.run_number }}.apk
       - uses: actions/upload-artifact@v4
