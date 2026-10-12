@@ -105,6 +105,10 @@ class YouTubeImporter(
 
     /** Options every yt-dlp call gets. (The engine library itself adds its bundled QuickJS JavaScript runtime.) */
     private fun YoutubeDLRequest.common(cookies: Boolean) {
+        // Keep yt-dlp's cache: solved YouTube JavaScript challenges are reused instead of re-solved every time
+        // (re-solving on a phone takes a long while). Setting it also stops the library adding --no-cache-dir.
+        addOption("--cache-dir", File(context.filesDir, "ytdlp-cache").apply { mkdirs() }.absolutePath)
+        addOption("--socket-timeout", "20")
         if (cookies) withCookies()
     }
 
@@ -122,8 +126,9 @@ class YouTubeImporter(
                 val m = VideoMeta("https://www.youtube.com/watch?v=jNQXAC9IVRw", "jNQXAC9IVRw", "Me at the zoo", "jawed", 19, null)
                 attempts.filter { !it.cookies }.forEach { a ->
                     val work = File(context.cacheDir, "selftest").apply { deleteRecursively(); mkdirs() }
+                    val t0 = System.currentTimeMillis()
                     runCatching { fetchAudio(m, AudioFormat.MP3, work, a) }
-                        .onSuccess { android.util.Log.i(tag, "SELFTEST attempt ${a.label}: OK ${it.name} ${it.length()} bytes") }
+                        .onSuccess { android.util.Log.i(tag, "SELFTEST attempt ${a.label}: OK ${it.name} ${it.length()} bytes in ${(System.currentTimeMillis() - t0) / 1000}s") }
                         .onFailure { android.util.Log.e(tag, "SELFTEST attempt ${a.label}: ${ytError(it)}") }
                 }
             } catch (t: Throwable) {
@@ -186,8 +191,9 @@ class YouTubeImporter(
     /** Ways to ask YouTube for the audio, tried in order until one works (YouTube treats clients differently). */
     private data class Attempt(val cookies: Boolean, val clients: String?, val label: String)
     private val attempts = listOf(
+        Attempt(false, "android_vr", "fast"),              // no JavaScript challenge to solve → quickest
         Attempt(false, null, "standard"),
-        Attempt(false, "tv_simply,android_vr,mweb", "TV / VR clients"),
+        Attempt(false, "tv_simply,mweb", "TV / mobile web"),
         Attempt(true, null, "signed in"),
         Attempt(true, "tv,mweb,web_safari", "signed in · TV/mobile web"),
     )
@@ -203,7 +209,11 @@ class YouTubeImporter(
             for ((a, idx) in order) {
                 work.listFiles()?.forEach { it.delete() }
                 try {
-                    out = fetchAudio(m, format, work, a)
+                    var timedOut = false
+                    val watchdog = scope.launch { kotlinx.coroutines.delay(4 * 60_000L); timedOut = true; runCatching { YoutubeDL.getInstance().destroyProcessById(processId) } }
+                    out = try { fetchAudio(m, format, work, a) }
+                    catch (t: Throwable) { if (timedOut) throw java.util.concurrent.TimeoutException("took too long"); throw t }
+                    finally { watchdog.cancel() }
                     enginePrefs.edit().putInt("attempt", idx).apply()
                     break
                 } catch (t: Throwable) {
@@ -246,7 +256,13 @@ class YouTubeImporter(
                     line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") -> ImportStep.TAG
                     else -> ImportStep.DOWNLOAD
                 }
-                _state.value = ImportState.Running(m, step, (progress / 100f).coerceIn(0f, 1f), line.take(80))
+                val detail = when {
+                    line.contains("JS challenge", true) || line.contains("jsc", true) -> "Unlocking the audio stream (first time can take a minute)…"
+                    line.contains("Downloading webpage") || line.contains("player") -> "Talking to YouTube (${a.label})…"
+                    line.contains("[download]") -> line.substringAfter("[download]").trim().take(70)
+                    else -> line.take(80)
+                }
+                _state.value = ImportState.Running(m, step, (progress / 100f).coerceIn(0f, 1f), detail)
             }
         }
         return work.listFiles()?.filter { it.extension.equals(format.ext, true) }?.maxByOrNull { it.length() }

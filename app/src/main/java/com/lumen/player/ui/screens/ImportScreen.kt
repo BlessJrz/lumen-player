@@ -303,7 +303,8 @@ private fun RunningCard(s: ImportState.Running) {
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                PulseDots(Modifier.weight(1f))
+                PulseDots()
+                LText(s.detail, Lumen.type.caption, cc.textSecondary, Modifier.weight(1f).padding(horizontal = 10.dp), maxLines = 2)
                 LText("Cancel", Lumen.type.label, cc.danger, Modifier.pressable { env.c.importer.cancel() }, upper = true)
             }
         }

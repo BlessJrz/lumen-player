@@ -213,6 +213,8 @@ fun YouTubeLikesScreen() {
                     if (batch.active) {
                         LinearBar((batch.done + batch.failed).toFloat() / batch.total.coerceAtLeast(1))
                         LText(batch.current.orEmpty(), Lumen.type.bodyS, Lumen.colors.textSecondary, maxLines = 1)
+                        val st by c.importer.state.collectAsState()
+                        (st as? com.lumen.player.data.youtube.ImportState.Running)?.let { LText(it.detail, Lumen.type.caption, Lumen.colors.textTertiary, maxLines = 2) }
                     }
                     batch.errors.takeLast(3).forEach { (title, why) ->
                         Column {
