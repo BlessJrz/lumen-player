@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
@@ -30,7 +31,7 @@ import com.lumen.player.ui.theme.Lumen
 
 /** Bottom space reserved for the floating tab bar + mini-player (cover) or the player bar (inner). */
 @Composable
-fun bottomInset(): Dp = if (LocalEnv.current.wide) 120.dp else 200.dp
+fun bottomInset(): Dp = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + if (LocalEnv.current.wide) 150.dp else 190.dp
 
 @Composable
 fun hPad(): Dp = if (LocalEnv.current.wide) 0.dp else 16.dp

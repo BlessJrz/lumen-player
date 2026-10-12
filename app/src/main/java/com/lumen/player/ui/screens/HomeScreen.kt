@@ -99,12 +99,8 @@ fun HomeScreen() {
     var mood by remember { mutableStateOf(0) }
     LaunchedEffect(count, ps.current?.id) { if (count > 0) home = c.library.home() }
 
-    if (env.wide) Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        Box(Modifier.weight(1f)) { HomeBody(env, count, home, ps, scan, mood) { mood = it } }
-        Column(Modifier.width(300.dp).fillMaxHeight().padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 12.dp, bottom = 24.dp)) {
-            NowPlayingPanel(ps, Modifier.fillMaxWidth())
-        }
-    } else HomeBody(env, count, home, ps, scan, mood) { mood = it }
+    // Unfolded: one full-width column. The persistent player bar already covers "now playing", so no side panel.
+    HomeBody(env, count, home, ps, scan, mood) { mood = it }
 }
 
 @Composable
@@ -177,7 +173,7 @@ private fun HomeBody(env: Env, count: Int, home: HomeData?, ps: PlayerState, sca
                 items(h.collections, key = { it.path }) { f ->
                     val cover = remember(f.coverTrackId) { mutableStateOf<TrackEntity?>(null) }
                     LaunchedEffect(f.coverTrackId) { cover.value = f.coverTrackId?.let { c.library.trackNow(it) } }
-                    CategoryCard(f.name, f.metaLine(), cover.value, { env.nav.navigate(Routes.folder(f.path)) }, onLongClick = { env.folderMenu(o, f.path, f.name) })
+                    CategoryCard(f.name, f.metaLine(), cover.value, { env.nav.navigate(Routes.folder(f.path)) }, width = if (env.wide) 220.dp else 176.dp, height = if (env.wide) 260.dp else 212.dp, onLongClick = { env.folderMenu(o, f.path, f.name) })
                 }
             }
         }

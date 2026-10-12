@@ -115,6 +115,20 @@ fun ImportScreen() {
         }
         when (val s = st) {
             ImportState.Idle -> {
+                item("likes") {
+                    val signedIn by c.ytAccount.signedIn.collectAsState()
+                    if (!signedIn) YouTubeSignInCard { env.nav.navigate(Routes.YT_LOGIN) }
+                    else Glass(Modifier.fillMaxWidth().pressable(scaleTo = .98f) { env.nav.navigate(Routes.YT_LIKES) }, strong = true) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Box(Modifier.size(44.dp).clip(CircleShape).background(Lumen.colors.accentSoft), contentAlignment = Alignment.Center) { LIcon(LIcons.heartFilled, 22.dp, Lumen.colors.accentText) }
+                            Column(Modifier.weight(1f)) {
+                                LText("Your YouTube likes", Lumen.type.titleM)
+                                LText("Pick liked videos and YouTube Music likes to import", Lumen.type.bodyS, Lumen.colors.textSecondary)
+                            }
+                            LIcon(LIcons.chevronRight, 20.dp, Lumen.colors.textSecondary)
+                        }
+                    }
+                }
                 item("alt") {
                     Glass(Modifier.fillMaxWidth(), shadow = false) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {

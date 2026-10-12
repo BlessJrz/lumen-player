@@ -218,6 +218,12 @@ private fun Section(cat: SetCat, s: AppSettings) {
             Divider()
             SettingRow(LIcons.folder, "Save imports to", if (s.importToNas) "NAS › ${s.importFolder}" else "This phone", RowControl.Chevron, onClick = { env.nav.navigate(Routes.IMPORT) })
             Divider()
+            run {
+                val yt by c.ytAccount.signedIn.collectAsState()
+                SettingRow(LIcons.youtube, "YouTube account", if (yt) "Signed in · tap to see your likes" else "Sign in to import from your likes", RowControl.Chevron,
+                    onClick = { env.nav.navigate(if (yt) Routes.YT_LIKES else Routes.YT_LOGIN) })
+            }
+            Divider()
             SettingRow(LIcons.refresh, "Update import engine", "Get the latest yt-dlp — fixes most failed imports", RowControl.Chevron, onClick = { c.importer.updateEngine { o.toast(it, ToastKind.Info) } })
         }
         SetCat.About -> Group(null) {

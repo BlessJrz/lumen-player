@@ -90,7 +90,10 @@ private fun c(hex: String): Color {
 }
 
 private fun palette(dark: Boolean, v: List<String>) = LumenColors(
-    c(v[0]), c(v[1]), c(v[2]), c(v[3]), c(v[4]), c(v[5]), c(v[6]), c(v[7]), c(v[8]), c(v[9]), c(v[10]),
+    c(v[0]), c(v[1]), c(v[2]), c(v[3]), c(v[4]), c(v[5]), c(v[6]), c(v[7]), c(v[8]),
+    // Readability floor: secondary/tertiary text stays legible over glass and busy backgrounds.
+    c(v[9]).let { it.copy(alpha = maxOf(it.alpha, if (dark) .82f else .76f)) },
+    c(v[10]).let { it.copy(alpha = maxOf(it.alpha, if (dark) .62f else .58f)) },
     c(v[11]), c(v[12]), c(v[13]), c(v[14]), c(v[15]), c(v[16]), c(v[17]), c(v[18]), c(v[19]), c(v[20]), c(v[21]), dark,
 )
 

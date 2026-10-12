@@ -45,6 +45,8 @@ object Routes {
     const val PLAYLISTS = "playlists"
     const val DOWNLOADS = "downloads"
     const val IMPORT = "import"
+    const val YT_LOGIN = "yt_login"
+    const val YT_LIKES = "yt_likes"
     const val SETTINGS = "settings"
     const val NAS = "nas"
     const val EQ = "eq"

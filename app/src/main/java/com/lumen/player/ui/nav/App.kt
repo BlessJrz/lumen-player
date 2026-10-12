@@ -148,6 +148,8 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
                                 composable("playlist/{id}", listOf(navArgument("id") { type = NavType.LongType })) { PlaylistsScreen(it.arguments?.getLong("id")) }
                                 composable(Routes.DOWNLOADS) { DownloadsScreen() }
                                 composable(Routes.IMPORT) { ImportScreen() }
+                                composable(Routes.YT_LOGIN) { YouTubeLoginScreen() }
+                                composable(Routes.YT_LIKES) { YouTubeLikesScreen() }
                                 composable(Routes.SETTINGS) { SettingsScreen() }
                                 composable(Routes.NAS) { NasSetupScreen() }
                                 composable(Routes.EQ) { EqualizerScreen() }

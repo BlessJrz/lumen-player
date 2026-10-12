@@ -4,6 +4,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -54,8 +60,10 @@ fun TrackRow(
     highlight: Boolean = false,
 ) {
     val c = Lumen.colors
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    val albumCol = showAlbum && maxWidth >= 600.dp
     Row(
-        modifier.fillMaxWidth().height(64.dp)
+        Modifier.fillMaxWidth().heightIn(min = 64.dp)
             .then(if (highlight || playing && index != null) Modifier.clip(shape(Lumen.shapes.tile)).background(c.accentSoft).padding(horizontal = 10.dp) else Modifier)
             .pressable(scaleTo = .98f, onLongClick = onLongClick ?: onMore, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
@@ -70,13 +78,14 @@ fun TrackRow(
             LText(t.title, Lumen.type.body, if (playing) c.accentText else c.textPrimary, maxLines = 1)
             LText(subtitle ?: t.displayArtist(), Lumen.type.bodyS, c.textSecondary, maxLines = 1)
         }
-        if (showAlbum) LText(t.album.ifBlank { t.collectionName() }, Lumen.type.bodyS, c.textSecondary, Modifier.width(140.dp), maxLines = 1)
+        if (albumCol) LText(t.album.ifBlank { t.collectionName() }, Lumen.type.bodyS, c.textSecondary, Modifier.width(maxWidth * .22f), maxLines = 1)
         if (playing && index == null) LIcon(LIcons.bars, 16.dp, c.accentText)
         if (t.localPath != null) LIcon(LIcons.offline, 15.dp, c.accentText)
         if (t.favorite) LIcon(LIcons.heartFilled, 14.dp, c.accentText)
         LText(fmtTime(t.durationMs), Lumen.type.caption, c.textTertiary)
         trailing?.invoke()
         if (onMore != null) Box(Modifier.size(32.dp).pressable(onClick = onMore), contentAlignment = Alignment.Center) { LIcon(LIcons.moreVert, 20.dp, c.textSecondary) }
+    }
     }
 }
 
@@ -105,14 +114,14 @@ fun CategoryCard(name: String, meta: String, cover: TrackEntity?, onClick: () ->
         Glass(Modifier.padding(12.dp).size(36.dp), radius = Lumen.shapes.control, strong = true, shadow = false) {
             LIcon(icon, 18.dp, c.textPrimary, Modifier.align(Alignment.Center))
         }
-        Glass(
-            Modifier.align(Alignment.BottomCenter).padding(8.dp).fillMaxWidth(), radius = Lumen.shapes.tile, strong = true, shadow = false,
-            fill = if (c.isDark) c.bgBase.copy(alpha = .38f) else c.glassFillStrong,
-        ) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                LText(name, Lumen.type.titleM, c.textPrimary, maxLines = 1)
-                LText(meta, Lumen.type.caption, c.textSecondary, maxLines = 1, upper = true)
-            }
+        // Text over artwork always sits on a dark scrim with white type, whatever the theme — art is unpredictable.
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(.55f)
+                .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = .55f), Color.Black.copy(alpha = .86f))))
+        )
+        Column(Modifier.align(Alignment.BottomStart).padding(horizontal = 14.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            LText(name, Lumen.type.titleM.copy(shadow = Shadow(Color.Black.copy(alpha = .6f), Offset(0f, 1f), 6f)), Color.White, maxLines = 2)
+            LText(meta, Lumen.type.caption, Color.White.copy(alpha = .85f), maxLines = 1, upper = true)
         }
     }
 }

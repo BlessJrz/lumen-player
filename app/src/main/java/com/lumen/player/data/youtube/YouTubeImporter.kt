@@ -57,6 +57,7 @@ class YouTubeImporter(
     private val meta: MetadataRepository,
     private val downloads: DownloadRepository,
     private val scope: CoroutineScope,
+    val account: YouTubeAccount,
 ) {
     private val _state = MutableStateFlow<ImportState>(ImportState.Idle)
     val state: StateFlow<ImportState> = _state.asStateFlow()
@@ -89,7 +90,7 @@ class YouTubeImporter(
                 _state.value = ImportState.Preparing
                 ensureInit()
                 _state.value = ImportState.Fetching(url)
-                val info = withContext(Dispatchers.IO) { YoutubeDL.getInstance().getInfo(url) }
+                val info = withContext(Dispatchers.IO) { YoutubeDL.getInstance().getInfo(YoutubeDLRequest(url).apply { addOption("--no-playlist"); withCookies() }) }
                 _state.value = ImportState.Ready(
                     VideoMeta(url, info.id ?: "", info.title ?: "Untitled", info.uploader ?: "", info.duration, info.thumbnail)
                 )
@@ -111,45 +112,116 @@ class YouTubeImporter(
         }
     }
 
+    private fun YoutubeDLRequest.withCookies() { account.cookieFile?.let { addOption("--cookies", it.absolutePath) } }
+
     fun start(m: VideoMeta, format: AudioFormat, toNas: Boolean, nasFolder: String, title: String, artist: String) {
         job?.cancel()
         job = scope.launch {
-            val work = File(context.cacheDir, "yt").apply { deleteRecursively(); mkdirs() }
             try {
                 ensureInit()
-                _state.value = ImportState.Running(m, ImportStep.DOWNLOAD, 0f, "Starting…")
-                val req = YoutubeDLRequest(m.url).apply {
-                    addOption("--no-playlist")
-                    addOption("-x")
-                    addOption("--audio-format", format.ytdlp)
-                    addOption("--audio-quality", "0")
-                    addOption("--embed-metadata")
-                    addOption("--embed-thumbnail")
-                    addOption("--convert-thumbnails", "jpg")
-                    addOption("-o", File(work, "%(title).120B.%(ext)s").absolutePath)
-                }
-                withContext(Dispatchers.IO) {
-                    YoutubeDL.getInstance().execute(req, processId) { progress, _, line ->
-                        val step = when {
-                            line.contains("[ExtractAudio]") || line.contains("[ffmpeg]") || line.contains("Destination") && line.contains(".${format.ext}") -> ImportStep.CONVERT
-                            line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") -> ImportStep.TAG
-                            else -> ImportStep.DOWNLOAD
-                        }
-                        _state.value = ImportState.Running(m, step, (progress / 100f).coerceIn(0f, 1f), line.take(80))
-                    }
-                }
-                val out = work.listFiles()?.filter { it.extension.equals(format.ext, true) }?.maxByOrNull { it.length() }
-                    ?: work.listFiles()?.filter { it.extension !in setOf("jpg", "webp", "png", "part", "json") }?.maxByOrNull { it.length() }
-                    ?: error("Conversion produced no audio file")
-                val niceName = sanitize(if (artist.isNotBlank()) "$artist - $title" else title.ifBlank { out.nameWithoutExtension }) + "." + out.extension
-                val id = saveImported(m, out, niceName, toNas, nasFolder, title, artist)
-                _history.value = listOf(ImportHistoryItem(title.ifBlank { m.title }, if (toNas) "NAS › ${nasFolder.replace("/", " › ")}" else "This phone", System.currentTimeMillis())) + _history.value
-                _state.value = ImportState.Done(m, id, if (toNas) "NAS › ${nasFolder.replace("/", " › ")}" else "This phone · Offline")
+                val (id, savedTo) = download(m, format, toNas, nasFolder, title, artist)
+                _state.value = ImportState.Done(m, id, savedTo)
             } catch (t: Throwable) {
                 if (t is kotlinx.coroutines.CancellationException) { _state.value = ImportState.Idle; throw t }
                 _state.value = ImportState.Failed(friendly(t), m)
+            }
+        }
+    }
+
+    /** Downloads, converts and saves one video. Returns the new track id and where it was saved. */
+    private suspend fun download(m: VideoMeta, format: AudioFormat, toNas: Boolean, nasFolder: String, title: String, artist: String): Pair<Long, String> {
+        val work = File(context.cacheDir, "yt").apply { deleteRecursively(); mkdirs() }
+        try {
+            _state.value = ImportState.Running(m, ImportStep.DOWNLOAD, 0f, "Starting…")
+            val req = YoutubeDLRequest(m.url).apply {
+                addOption("--no-playlist")
+                addOption("-x")
+                addOption("--audio-format", format.ytdlp)
+                addOption("--audio-quality", "0")
+                addOption("--embed-metadata")
+                addOption("--embed-thumbnail")
+                addOption("--convert-thumbnails", "jpg")
+                addOption("-o", File(work, "%(title).120B.%(ext)s").absolutePath)
+                withCookies()
+            }
+            withContext(Dispatchers.IO) {
+                YoutubeDL.getInstance().execute(req, processId) { progress, _, line ->
+                    val step = when {
+                        line.contains("[ExtractAudio]") || line.contains("[ffmpeg]") || line.contains("Destination") && line.contains(".${format.ext}") -> ImportStep.CONVERT
+                        line.contains("[EmbedThumbnail]") || line.contains("[Metadata]") -> ImportStep.TAG
+                        else -> ImportStep.DOWNLOAD
+                    }
+                    _state.value = ImportState.Running(m, step, (progress / 100f).coerceIn(0f, 1f), line.take(80))
+                }
+            }
+            val out = work.listFiles()?.filter { it.extension.equals(format.ext, true) }?.maxByOrNull { it.length() }
+                ?: work.listFiles()?.filter { it.extension !in setOf("jpg", "webp", "png", "part", "json") }?.maxByOrNull { it.length() }
+                ?: error("Conversion produced no audio file")
+            val niceName = sanitize(if (artist.isNotBlank()) "$artist - $title" else title.ifBlank { out.nameWithoutExtension }) + "." + out.extension
+            val id = saveImported(m, out, niceName, toNas, nasFolder, title, artist)
+            val savedTo = if (toNas) "NAS › ${nasFolder.replace("/", " › ")}" else "This phone · Offline"
+            _history.value = listOf(ImportHistoryItem(title.ifBlank { m.title }, savedTo, System.currentTimeMillis())) + _history.value
+            account.markImported(m.id)
+            return id to savedTo
+        } finally {
+            work.deleteRecursively()
+        }
+    }
+
+    // ---------- Liked videos (needs the person's own YouTube sign-in) ----------
+
+    enum class LikeSource(val label: String, val url: String) {
+        YOUTUBE("YouTube", "https://www.youtube.com/playlist?list=LL"),
+        MUSIC("YouTube Music", "https://music.youtube.com/playlist?list=LM"),
+    }
+
+    /** One page of the signed-in user's liked videos, newest first. */
+    suspend fun likes(source: LikeSource, start: Int, count: Int): List<VideoMeta> {
+        ensureInit()
+        val cookies = account.cookieFile ?: error("Sign in to YouTube first")
+        val req = YoutubeDLRequest(source.url).apply {
+            addOption("--flat-playlist")
+            addOption("-J")
+            addOption("--playlist-start", (start + 1).toString())
+            addOption("--playlist-end", (start + count).toString())
+            addOption("--cookies", cookies.absolutePath)
+        }
+        val out = withContext(Dispatchers.IO) { YoutubeDL.getInstance().execute(req, "lumen-likes").out }
+        val json = org.json.JSONObject(out.substring(out.indexOf('{')))
+        val entries = json.optJSONArray("entries") ?: return emptyList()
+        return (0 until entries.length()).mapNotNull { i ->
+            val e = entries.optJSONObject(i) ?: return@mapNotNull null
+            val id = e.optString("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            val channel = e.optString("channel").ifBlank { e.optString("uploader") }.removeSuffix(" - Topic")
+            VideoMeta("https://www.youtube.com/watch?v=$id", id, e.optString("title", "Untitled"), channel,
+                e.optDouble("duration", 0.0).toInt(), "https://i.ytimg.com/vi/$id/mqdefault.jpg")
+        }
+    }
+
+    data class BatchState(val total: Int = 0, val done: Int = 0, val failed: Int = 0, val current: String? = null) {
+        val active get() = current != null
+    }
+    private val _batch = MutableStateFlow(BatchState())
+    val batch: StateFlow<BatchState> = _batch.asStateFlow()
+
+    /** Imports several videos one after another, using the title/artist guessed from each video. */
+    fun importMany(items: List<VideoMeta>, format: AudioFormat, toNas: Boolean, nasFolder: String) {
+        if (items.isEmpty()) return
+        job?.cancel()
+        job = scope.launch {
+            var done = 0; var failed = 0
+            try {
+                ensureInit()
+                items.forEach { m ->
+                    _batch.value = BatchState(items.size, done, failed, m.title)
+                    val p = FilenameParser.parse(m.title + ".x")
+                    val artist = p.artist.ifBlank { m.channel }
+                    try { download(m, format, toNas, nasFolder, p.title.ifBlank { m.title }, artist); done++ }
+                    catch (t: Throwable) { if (t is kotlinx.coroutines.CancellationException) throw t; failed++ }
+                }
+                _state.value = ImportState.Idle
             } finally {
-                work.deleteRecursively()
+                _batch.value = BatchState(items.size, done, failed, null)
             }
         }
     }

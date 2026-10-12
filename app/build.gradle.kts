@@ -72,6 +72,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("androidx.palette:palette-ktx:1.0.0")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation("androidx.webkit:webkit:1.12.1")
 
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
