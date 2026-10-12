@@ -61,29 +61,61 @@ import com.lumen.player.ui.theme.Lumen
 import kotlinx.coroutines.launch
 
 private const val SIGN_IN_URL = "https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https%3A%2F%2Fm.youtube.com%2F"
+private const val SWITCHER_URL = "https://www.youtube.com/channel_switcher?next=%2Ffeed%2Fyou"
+private const val DESKTOP_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
 
-/** The person signs in to their own Google account here; Lumen only keeps the resulting YouTube cookies. */
+/**
+ * Two steps: the person signs in to their own Google account, then picks which YouTube channel (brand account)
+ * Lumen should use on YouTube's own channel switcher. Lumen only keeps the resulting YouTube cookies.
+ */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun YouTubeLoginScreen() {
+fun YouTubeLoginScreen(pickOnly: Boolean = false) {
     val env = LocalEnv.current
     val o = LocalOverlays.current
     val account = env.c.ytAccount
     var loading by remember { mutableStateOf(true) }
+    var picking by remember { mutableStateOf(pickOnly) }
     var done by remember { mutableStateOf(false) }
+    var web by remember { mutableStateOf<WebView?>(null) }
     val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
+    fun finish() {
+        if (done) return
+        if (account.captureFromWebView()) {
+            done = true
+            o.toast("YouTube channel saved", ToastKind.Success)
+            env.nav.popBackStack()
+            if (!pickOnly) env.nav.navigate(Routes.YT_LIKES)
+        } else o.toast("Not signed in yet", ToastKind.Error)
+    }
+    fun openSwitcher(v: WebView) {
+        picking = true
+        v.settings.userAgentString = DESKTOP_UA
+        v.loadUrl(SWITCHER_URL)
+    }
+
     Column(Modifier.fillMaxSize().padding(top = top + 8.dp, bottom = bottom), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Box(Modifier.padding(horizontal = 16.dp)) {
-            BackBar("Sign in to YouTube", overline = "Your account") { if (loading) PulseDots() }
+            BackBar(if (picking) "Choose your channel" else "Sign in to YouTube", overline = if (picking) "Step 2 of 2" else "Step 1 of 2") {
+                if (loading) PulseDots()
+                if (picking) LButton("Done", { finish() }, height = 40.dp)
+            }
         }
-        LText("Sign in with your Google account. Lumen uses the sign-in only to read your liked videos and import them — your password goes straight to Google.",
-            Lumen.type.bodyS, Lumen.colors.textSecondary, Modifier.padding(horizontal = 16.dp))
+        LText(
+            if (picking) "Tap the channel whose likes you want to import. You can switch later in Settings → YouTube account."
+            else "Sign in with your Google account — your password goes straight to Google. Next you’ll pick which channel to use.",
+            Lumen.type.bodyS, Lumen.colors.textSecondary, Modifier.padding(horizontal = 16.dp),
+        )
         Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 8.dp).clip(androidx.compose.foundation.shape.RoundedCornerShape(Lumen.shapes.card))) {
             AndroidView(factory = { ctx ->
                 WebView(ctx).apply {
+                    web = this
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
                     // Present as a normal mobile browser: Google refuses sign-in from pages flagged as embedded.
                     settings.userAgentString = settings.userAgentString.replace("; wv", "").replace(Regex("""Version/[\d.]+ """), "")
                     if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
@@ -95,16 +127,16 @@ fun YouTubeLoginScreen() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) { loading = true }
                         override fun onPageFinished(view: WebView?, url: String?) {
                             loading = false
-                            val host = android.net.Uri.parse(url ?: "").host.orEmpty()
-                            if (!done && host.endsWith("youtube.com") && account.webSessionLooksSignedIn() && account.captureFromWebView()) {
-                                done = true
-                                o.toast("Signed in to YouTube", ToastKind.Success)
-                                env.nav.popBackStack()
-                                env.nav.navigate(Routes.YT_LIKES)
+                            val u = android.net.Uri.parse(url ?: "")
+                            val onYouTube = u.host.orEmpty().endsWith("youtube.com")
+                            if (done || view == null || !onYouTube || !account.webSessionLooksSignedIn()) return
+                            when {
+                                !picking -> openSwitcher(view)                       // signed in → choose channel
+                                !u.path.orEmpty().contains("channel_switcher") -> finish() // a channel was picked
                             }
                         }
                     }
-                    loadUrl(SIGN_IN_URL)
+                    if (pickOnly) openSwitcher(this) else loadUrl(SIGN_IN_URL)
                 }
             }, modifier = Modifier.fillMaxSize(), onRelease = { it.stopLoading(); it.destroy() })
         }
@@ -123,7 +155,8 @@ fun YouTubeLikesScreen() {
     val batch by c.importer.batch.collectAsState()
     val settings by c.settings.settings.collectAsState(initial = AppSettings())
     var source by remember { mutableStateOf(0) }
-    val items = remember(source) { mutableStateListOf<VideoMeta>() }
+    val cookieStamp = remember(signedIn) { c.ytAccount.cookieFile?.lastModified() ?: 0L }
+    val items = remember(source, cookieStamp) { mutableStateListOf<VideoMeta>() }
     val selected = remember { mutableStateListOf<String>() }
     var loading by remember(source) { mutableStateOf(false) }
     var end by remember(source) { mutableStateOf(false) }
@@ -147,6 +180,7 @@ fun YouTubeLikesScreen() {
     ScreenList(gap = 12.dp) {
         item("bar") {
             BackBar("Your likes", overline = "YouTube") {
+                if (signedIn) com.lumen.player.ui.components.IconBtn(LIcons.user, { env.nav.navigate(Routes.YT_SWITCH) }, size = 40.dp)
                 if (signedIn) LButton("Sign out", {
                     c.ytAccount.signOut(); o.toast("Signed out of YouTube", ToastKind.Info); env.nav.popBackStack()
                 }, kind = BtnKind.Ghost, height = 40.dp)

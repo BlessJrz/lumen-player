@@ -222,6 +222,7 @@ private fun Section(cat: SetCat, s: AppSettings) {
                 val yt by c.ytAccount.signedIn.collectAsState()
                 SettingRow(LIcons.youtube, "YouTube account", if (yt) "Signed in · tap to see your likes" else "Sign in to import from your likes", RowControl.Chevron,
                     onClick = { env.nav.navigate(if (yt) Routes.YT_LIKES else Routes.YT_LOGIN) })
+                if (yt) { Divider(); SettingRow(LIcons.user, "Switch YouTube channel", "Pick a different channel on this Google account", RowControl.Chevron, onClick = { env.nav.navigate(Routes.YT_SWITCH) }) }
             }
             Divider()
             SettingRow(LIcons.refresh, "Update import engine", "Get the latest yt-dlp — fixes most failed imports", RowControl.Chevron, onClick = { c.importer.updateEngine { o.toast(it, ToastKind.Info) } })

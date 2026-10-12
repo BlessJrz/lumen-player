@@ -152,6 +152,7 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
                                 composable(Routes.IMPORT) { ImportScreen() }
                                 composable(Routes.YT_LOGIN) { YouTubeLoginScreen() }
                                 composable(Routes.YT_LIKES) { YouTubeLikesScreen() }
+                                composable(Routes.YT_SWITCH) { YouTubeLoginScreen(pickOnly = true) }
                                 composable(Routes.SETTINGS) { SettingsScreen() }
                                 composable(Routes.NAS) { NasSetupScreen() }
                                 composable(Routes.EQ) { EqualizerScreen() }
