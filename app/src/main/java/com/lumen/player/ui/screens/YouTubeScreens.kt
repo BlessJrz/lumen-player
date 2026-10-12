@@ -217,7 +217,7 @@ fun YouTubeLikesScreen() {
                     batch.errors.takeLast(3).forEach { (title, why) ->
                         Column {
                             LText(title, Lumen.type.bodyS, Lumen.colors.textPrimary, maxLines = 1)
-                            LText(why, Lumen.type.caption, Lumen.colors.danger, maxLines = 3)
+                            LText(why, Lumen.type.caption, Lumen.colors.danger, maxLines = 10)
                         }
                     }
                 }

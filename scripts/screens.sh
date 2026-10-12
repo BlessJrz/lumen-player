@@ -29,7 +29,7 @@ for d in AURORA OBSIDIAN FLUID; do
   go --es lumen.route "folder?path=Playlists%2FHip%20Hop"; shot "inner-$d-DARK-3-folder" 4
 done
 go --es lumen.design FLUID --es lumen.theme LIGHT --es lumen.route settings; shot "inner-FLUID-LIGHT-4-settings" 4
-go --es lumen.selftest engine; sleep 150
+go --es lumen.selftest engine; sleep 240
 adb logcat -d | grep -E "LumenImport|youtubedl|YoutubeDL" | tail -120 > $out/engine.txt
 adb logcat -d -b crash > $out/crash.txt
 adb logcat -d | grep -iE "AndroidRuntime|FATAL|lumen" | tail -200 > $out/log.txt
