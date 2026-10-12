@@ -11,6 +11,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -374,7 +375,7 @@ fun Disc(t: TrackEntity, ps: PlayerState, size: Dp, onSeek: (Float) -> Unit, onT
                 if (a < 0) a += 360f
                 return a / 360f
             }
-            androidx.compose.foundation.gestures.detectDragGestures(
+            detectDragGestures(
                 onDragStart = { o -> drag = frac(o) }, onDragEnd = { drag?.let(onSeek); drag = null }, onDragCancel = { drag = null },
             ) { ch, _ -> drag = frac(ch.position) }
         },

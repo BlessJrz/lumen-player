@@ -81,7 +81,7 @@ import com.lumen.player.ui.screens.openPlayerClose
 import com.lumen.player.ui.screens.outputSheet
 import com.lumen.player.ui.theme.Lumen
 import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.hazeSource
+import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.launch
 
 /** Hands the root a pending deep link (e.g. a YouTube URL shared to Lumen). */
@@ -129,7 +129,7 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
         SharedTransitionLayout(Modifier.fillMaxSize().trackTaps(overlays)) {
             ProvideHaze(haze) { Box(Modifier.fillMaxSize()) {
                 // Everything the floating glass blurs.
-                Box(Modifier.fillMaxSize().hazeSource(haze)) {
+                Box(Modifier.fillMaxSize().haze(haze)) {
                     AmbientBackground(if (settings.artworkTint) artColors else null)
                     Row(Modifier.fillMaxSize()) {
                         if (wide) Spacer(Modifier.width(120.dp))

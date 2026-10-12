@@ -2,7 +2,7 @@ package com.lumen.player.ui.components
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateColorAsState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -51,7 +51,7 @@ import com.lumen.player.ui.theme.Lumen
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
 import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeChild
 
 /** Backdrop the floating glass chrome blurs (the scrolling content + ambient background). */
 val LocalHaze = staticCompositionLocalOf<HazeState?> { null }
@@ -76,6 +76,10 @@ fun LText(
         overflow = TextOverflow.Ellipsis,
     )
 }
+
+@Composable
+fun LText(text: String, style: TextStyle, modifier: Modifier, color: Color = Lumen.colors.textPrimary, maxLines: Int = Int.MAX_VALUE, align: TextAlign? = null, upper: Boolean = false) =
+    LText(text, style, color, modifier, maxLines, align, upper)
 
 @Composable
 fun LIcon(icon: ImageVector, size: Dp = 22.dp, tint: Color = Lumen.colors.textPrimary, modifier: Modifier = Modifier) {
@@ -133,7 +137,7 @@ fun Glass(
             .then(if (shadow) Modifier.shadow((if (c.isDark) 18 else 12).dp, shp, ambientColor = Color.Black.copy(alpha = t.glass.shadowAlpha), spotColor = Color.Black.copy(alpha = t.glass.shadowAlpha)) else Modifier)
             .clip(shp)
             .then(
-                if (useBlur) Modifier.hazeEffect(
+                if (useBlur) Modifier.hazeChild(
                     state = haze!!,
                     style = HazeStyle(
                         backgroundColor = c.bgBase,

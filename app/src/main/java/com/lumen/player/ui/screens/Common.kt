@@ -71,7 +71,7 @@ fun TitleBar(title: String, modifier: Modifier = Modifier, overline: String? = n
 fun BackBar(title: String, overline: String? = null, onBack: (() -> Unit)? = null, actions: @Composable () -> Unit = {}) {
     val env = LocalEnv.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        IconBtn(LIcons.chevronLeft, onBack ?: { env.nav.popBackStack() }, size = 40.dp)
+        IconBtn(LIcons.chevronLeft, onBack ?: { env.nav.popBackStack(); Unit }, size = 40.dp)
         Column(Modifier.weight(1f)) {
             if (overline != null) LText(overline, Lumen.type.overline, Lumen.colors.textTertiary, maxLines = 1, upper = true)
             LText(title, Lumen.type.titleM, maxLines = 1)
