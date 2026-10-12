@@ -66,6 +66,7 @@ class PlaybackService : MediaSessionService() {
     private var equalizer: Equalizer? = null
     private var currentPlayId = 0L
     private var progressJob: Job? = null
+    private var retries = 0
 
     private val c get() = (application as LumenApp).container
 
@@ -102,6 +103,7 @@ class PlaybackService : MediaSessionService() {
 
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                retries = 0
                 val id = mediaItem?.mediaId?.toLongOrNull() ?: return
                 scope.launch(Dispatchers.IO) {
                     c.db.tracks().bumpPlay(id, System.currentTimeMillis())
@@ -119,12 +121,14 @@ class PlaybackService : MediaSessionService() {
             override fun onAudioSessionIdChanged(audioSessionId: Int) { attachEq(audioSessionId) }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                // NAS dropped (e.g. left home Wi-Fi): reconnect via Tailscale and retry once.
+                // NAS dropped (e.g. left home Wi-Fi): reconnect (LAN → Tailscale) and retry a couple of times,
+                // then move on to the next song instead of looping forever.
                 c.nas.invalidate()
+                retries++
                 scope.launch {
-                    delay(1500)
-                    player.prepare()
-                    player.play()
+                    delay(1500L * retries)
+                    if (retries <= 2) { player.prepare(); player.play() }
+                    else if (player.hasNextMediaItem()) { retries = 0; player.seekToNextMediaItem(); player.prepare(); player.play() }
                 }
             }
         })

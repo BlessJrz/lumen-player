@@ -85,7 +85,7 @@ import dev.chrisbanes.haze.haze
 import kotlinx.coroutines.launch
 
 /** Hands the root a pending deep link (e.g. a YouTube URL shared to Lumen). */
-class PendingIntentAction { var openImport by mutableStateOf<String?>(null); var openPlayer by mutableStateOf(false) }
+class PendingIntentAction { var openImport by mutableStateOf<String?>(null); var openPlayer by mutableStateOf(false); var route by mutableStateOf<String?>(null) }
 
 @Composable
 fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
@@ -115,6 +115,7 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
         pending.openImport?.let { url -> nav.navigate(Routes.IMPORT) { launchSingleTop = true }; c.importer.fetch(url); pending.openImport = null }
     }
     LaunchedEffect(pending.openPlayer) { if (pending.openPlayer) { playerOpen = true; pending.openPlayer = false } }
+    LaunchedEffect(pending.route) { pending.route?.let { r -> playerOpen = false; runCatching { nav.navigate(r) { launchSingleTop = true } }; pending.route = null } }
     BackHandler(enabled = playerOpen && !overlays.anyOpen) { playerOpen = false }
 
     fun go(t: Tab) {
@@ -134,7 +135,7 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
                     Row(Modifier.fillMaxSize()) {
                         if (wide) Spacer(Modifier.width(120.dp))
                         Box(Modifier.weight(1f).padding(end = if (wide) 16.dp else 0.dp)) {
-                            NavHost(nav, startDestination = if (c.nas.config.isConfigured) Routes.HOME else Routes.NAS,
+                            NavHost(nav, startDestination = if (c.nas.config.isConfigured || com.lumen.player.data.library.DemoData.isDemo(c.context)) Routes.HOME else Routes.NAS,
                                 enterTransition = { fadeIn(tween(220)) + scaleIn(tween(260), initialScale = .985f) },
                                 exitTransition = { fadeOut(tween(160)) },
                                 popEnterTransition = { fadeIn(tween(220)) },

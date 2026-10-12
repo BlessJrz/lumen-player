@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import kotlinx.coroutines.launch
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -59,5 +60,21 @@ class MainActivity : ComponentActivity() {
             if (url != null) pending.openImport = url
         }
         if (i.getStringExtra("open") == "player") pending.openPlayer = true
+        i.getStringExtra("lumen.route")?.let { pending.route = it }
+        val c = (application as LumenApp).container
+        val design = i.getStringExtra("lumen.design")
+        val theme = i.getStringExtra("lumen.theme")
+        val demo = i.getBooleanExtra("lumen.demo", false)
+        if (design != null || theme != null || demo) c.appScope.launch {
+            design?.let { d -> runCatching { c.settings.setDesign(com.lumen.player.data.settings.Design.valueOf(d)) } }
+            theme?.let { t -> runCatching { c.settings.setThemeMode(ThemeMode.valueOf(t)) } }
+            if (demo) {
+                com.lumen.player.data.library.DemoData.seed(this@MainActivity, c.db, c.scanner)
+                c.settings.setOnboarded(true)
+                kotlinx.coroutines.delay(1500)
+                val t = c.library.tracks(listOf(1L, 2L, 3L, 4L, 5L))
+                c.player.load(t)
+            }
+        }
     }
 }

@@ -103,6 +103,13 @@ class PlayerConnection(private val context: Context, private val library: Librar
         p.play()
     }
 
+    /** Loads a queue without starting playback. Waits briefly for the controller to connect. */
+    suspend fun load(tracks: List<TrackEntity>) {
+        repeat(50) { if (controller != null) return@repeat; delay(100) }
+        val p = controller ?: return
+        p.setMediaItems(tracks.map(::item), 0, 0L)
+    }
+
     fun playNext(tracks: List<TrackEntity>) {
         val p = controller ?: return
         if (p.mediaItemCount == 0) return play(tracks)
