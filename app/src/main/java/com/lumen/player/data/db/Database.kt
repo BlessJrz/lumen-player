@@ -160,6 +160,7 @@ interface TrackDao {
     fun albums(): Flow<List<AlbumStat>>
 
     @Query("SELECT * FROM tracks WHERE tagsRead = 0 LIMIT :n") suspend fun needingTags(n: Int): List<TrackEntity>
+    @Query("SELECT COUNT(*) FROM tracks WHERE tagsRead = 0") suspend fun countNeedingTags(): Int
     @Query("SELECT * FROM tracks WHERE enriched = 0 AND userEdited = 0 ORDER BY lastPlayed DESC, playCount DESC LIMIT :n") suspend fun needingEnrichment(n: Int): List<TrackEntity>
     @Query("SELECT COUNT(*) FROM tracks WHERE enriched = 0") fun pendingEnrichment(): Flow<Int>
 
