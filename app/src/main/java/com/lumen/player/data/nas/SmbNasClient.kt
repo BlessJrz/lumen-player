@@ -30,7 +30,7 @@ class SmbNasClient private constructor(
         private const val MAX_READ = 512 * 1024
 
         private fun config() = SmbConfig.builder()
-            .withTimeout(20, TimeUnit.SECONDS)
+            .withTimeout(12, TimeUnit.SECONDS)
             .withSoTimeout(40, TimeUnit.SECONDS)
             .withMultiProtocolNegotiate(true)
             .withSecurityProvider(BCSecurityProvider())

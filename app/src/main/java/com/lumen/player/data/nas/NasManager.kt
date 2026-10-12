@@ -39,6 +39,36 @@ class NasManager(private val store: NasConfigStore, private val http: OkHttpClie
         NasProtocol.WEBDAV -> WebDavNasClient(host, c, http).also { it.ping() }
     }
 
+    @Volatile private var lastGoodHost: String? = null
+
+    private fun portOf(c: NasConfig) = when {
+        c.port > 0 -> c.port
+        c.protocol == NasProtocol.SMB -> 445
+        c.useHttps -> 5006
+        else -> 5005
+    }
+
+    /** Quick TCP check (no SMB handshake) so an unreachable address costs ~2 s instead of a 20 s timeout. */
+    private fun reachable(host: String, port: Int, timeoutMs: Int = 2500): Boolean = try {
+        java.net.Socket().use { it.connect(java.net.InetSocketAddress(host, port), timeoutMs); true }
+    } catch (_: Throwable) { false }
+
+    /**
+     * Hosts worth trying, best first: probes LAN and Tailscale addresses in parallel and returns the reachable ones
+     * (home address preferred). Away from home this skips the LAN address immediately.
+     */
+    private fun orderedHosts(c: NasConfig): List<String> {
+        val hosts = c.hosts
+        if (hosts.size <= 1) return hosts
+        val port = portOf(c)
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(hosts.size)
+        return try {
+            val futures = hosts.associateWith { h -> pool.submit<Boolean> { reachable(h, port) } }
+            val ok = hosts.filter { h -> runCatching { futures.getValue(h).get(3, java.util.concurrent.TimeUnit.SECONDS) }.getOrDefault(false) }
+            if (ok.isEmpty()) hosts else ok
+        } finally { pool.shutdownNow() }
+    }
+
     /** Blocking — call from IO threads only. */
     fun client(): NasClient = synchronized(lock) {
         client?.let { return it }
@@ -46,16 +76,27 @@ class NasManager(private val store: NasConfigStore, private val http: OkHttpClie
         if (!c.isConfigured) { _status.value = NasStatus.NotConfigured; throw IllegalStateException("NAS not set up") }
         _status.value = NasStatus.Connecting
         var last: Throwable? = null
-        for (h in c.hosts) {
+        for (h in orderedHosts(c)) {
             try {
                 val cl = create(h, c)
                 client = cl
+                lastGoodHost = h
                 _status.value = NasStatus.Connected(h, remote = h == c.remoteHost && h != c.lanHost)
                 return cl
             } catch (t: Throwable) { last = t }
         }
         _status.value = NasStatus.Offline(last?.message ?: "Unreachable")
         throw last ?: IllegalStateException("Unreachable")
+    }
+
+    /** Call when the phone switches networks (Wi-Fi ↔ mobile data / Tailscale) so the next call picks the right address. */
+    fun onNetworkChanged() {
+        val cur = (status.value as? NasStatus.Connected) ?: return
+        val c = config
+        // Re-check in the background; only drop the connection if the current host is no longer reachable.
+        Thread {
+            if (!reachable(cur.host, portOf(c), 2000) || (cur.remote && c.lanHost.isNotBlank() && reachable(c.lanHost, portOf(c), 1500))) invalidate()
+        }.start()
     }
 
     fun invalidate() = synchronized(lock) { runCatching { client?.close() }; client = null }
@@ -76,7 +117,7 @@ class NasManager(private val store: NasConfigStore, private val http: OkHttpClie
     /** Tests a config without saving it. Returns the host that worked. */
     suspend fun test(c: NasConfig): Result<String> = withContext(Dispatchers.IO) {
         var last: Throwable? = null
-        for (h in c.hosts) {
+        for (h in orderedHosts(c)) {
             try {
                 create(h, c).use { cl -> cl.list("") }
                 return@withContext Result.success(h)

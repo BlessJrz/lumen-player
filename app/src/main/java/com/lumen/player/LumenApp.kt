@@ -42,7 +42,16 @@ class AppContainer(val context: Context) {
     val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
     val db = LumenDatabase.build(context)
     val settings = SettingsRepository(context)
-    val nas = NasManager(NasConfigStore(context), http)
+    val nas = NasManager(NasConfigStore(context), http).also { n ->
+        // Switching between home Wi-Fi and mobile data/Tailscale: re-pick the NAS address.
+        runCatching {
+            val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) { n.onNetworkChanged() }
+                override fun onLost(network: android.net.Network) { n.onNetworkChanged() }
+            })
+        }
+    }
     val art = ArtworkStore(context)
     val scanner = LibraryScanner(nas, db, art)
     val library = LibraryRepository(db)

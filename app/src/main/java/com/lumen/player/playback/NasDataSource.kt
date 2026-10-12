@@ -63,7 +63,16 @@ class NasDataSource(private val nas: NasManager) : BaseDataSource(true) {
         val f = file ?: throw IOException("closed")
         if (position < bufStart || position >= bufStart + bufLen) {
             val n = try { f.read(position, buf, 0, buf.size) } catch (t: Throwable) {
-                throw DataSourceException(t, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+                // Connection dropped (e.g. network switch): reconnect once and continue from the same position.
+                try {
+                    runCatching { f.close() }
+                    nas.invalidate()
+                    val nf = nas.call { it.open(NasUri.pathOf(uri!!)) }
+                    file = nf
+                    nf.read(position, buf, 0, buf.size)
+                } catch (t2: Throwable) {
+                    throw DataSourceException(t2, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
+                }
             }
             if (n <= 0) return C.RESULT_END_OF_INPUT
             bufStart = position; bufLen = n
