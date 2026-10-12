@@ -61,7 +61,8 @@ fun TrackRow(
 ) {
     val c = Lumen.colors
     BoxWithConstraints(modifier.fillMaxWidth()) {
-    val albumCol = showAlbum && maxWidth >= 600.dp
+    val rowWidth = maxWidth
+    val albumCol = showAlbum && rowWidth >= 600.dp
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp)
             .then(if (highlight || playing && index != null) Modifier.clip(shape(Lumen.shapes.tile)).background(c.accentSoft).padding(horizontal = 10.dp) else Modifier)
@@ -78,7 +79,7 @@ fun TrackRow(
             LText(t.title, Lumen.type.body, if (playing) c.accentText else c.textPrimary, maxLines = 1)
             LText(subtitle ?: t.displayArtist(), Lumen.type.bodyS, c.textSecondary, maxLines = 1)
         }
-        if (albumCol) LText(t.album.ifBlank { t.collectionName() }, Lumen.type.bodyS, c.textSecondary, Modifier.width(maxWidth * .22f), maxLines = 1)
+        if (albumCol) LText(t.album.ifBlank { t.collectionName() }, Lumen.type.bodyS, c.textSecondary, Modifier.width(rowWidth * .22f), maxLines = 1)
         if (playing && index == null) LIcon(LIcons.bars, 16.dp, c.accentText)
         if (t.localPath != null) LIcon(LIcons.offline, 15.dp, c.accentText)
         if (t.favorite) LIcon(LIcons.heartFilled, 14.dp, c.accentText)

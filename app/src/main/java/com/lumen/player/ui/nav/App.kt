@@ -56,6 +56,8 @@ import com.lumen.player.ui.components.Overlays
 import com.lumen.player.ui.components.ProvideHaze
 import com.lumen.player.ui.components.rememberArtColors
 import com.lumen.player.ui.components.trackTaps
+import com.lumen.player.ui.screens.YouTubeLikesScreen
+import com.lumen.player.ui.screens.YouTubeLoginScreen
 import com.lumen.player.ui.screens.AlbumScreen
 import com.lumen.player.ui.screens.ArtistScreen
 import com.lumen.player.ui.screens.DownloadsScreen
