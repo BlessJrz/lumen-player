@@ -6,3 +6,4 @@ build/
 .DS_Store
 app/src/main/res/font/*.ttf
 captures/
+app/src/main/jniLibs/arm64-v8a/libqjs.so

@@ -69,13 +69,31 @@ class YouTubeImporter(
     private var job: Job? = null
     private val processId = "lumen-import"
 
+    private val enginePrefs = context.getSharedPreferences("ytdlp", Context.MODE_PRIVATE)
+
+    /** Bundled JavaScript engine (QuickJS) — yt-dlp needs one to unlock YouTube's audio streams. */
+    private val qjs: File? get() = File(context.applicationInfo.nativeLibraryDir, "libqjs.so").takeIf { it.exists() }
+
     private suspend fun ensureInit() = initLock.withLock {
-        if (initialized) return@withLock
-        withContext(Dispatchers.IO) {
-            YoutubeDL.getInstance().init(context)
-            FFmpeg.getInstance().init(context)
+        if (!initialized) {
+            withContext(Dispatchers.IO) {
+                YoutubeDL.getInstance().init(context)
+                FFmpeg.getInstance().init(context)
+            }
+            initialized = true
         }
-        initialized = true
+        // YouTube changes constantly; the yt-dlp bundled with the app goes stale. Refresh it every 2 days.
+        val last = enginePrefs.getLong("updated", 0)
+        if (System.currentTimeMillis() - last > 2L * 24 * 3600 * 1000) {
+            val ok = runCatching { withContext(Dispatchers.IO) { YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE) } }.isSuccess
+            if (ok) enginePrefs.edit().putLong("updated", System.currentTimeMillis()).apply()
+        }
+    }
+
+    /** Options every yt-dlp call gets: the JS engine, and the person's YouTube sign-in when asked for. */
+    private fun YoutubeDLRequest.common(cookies: Boolean) {
+        qjs?.let { addOption("--js-runtimes", "quickjs:${it.absolutePath}") }
+        if (cookies) withCookies()
     }
 
     fun extractUrl(text: String): String? =
@@ -90,7 +108,7 @@ class YouTubeImporter(
                 _state.value = ImportState.Preparing
                 ensureInit()
                 _state.value = ImportState.Fetching(url)
-                val info = withContext(Dispatchers.IO) { YoutubeDL.getInstance().getInfo(YoutubeDLRequest(url).apply { addOption("--no-playlist"); withCookies() }) }
+                val info = withContext(Dispatchers.IO) { YoutubeDL.getInstance().getInfo(YoutubeDLRequest(url).apply { addOption("--no-playlist"); common(cookies = false) }) }
                 _state.value = ImportState.Ready(
                     VideoMeta(url, info.id ?: "", info.title ?: "Untitled", info.uploader ?: "", info.duration, info.thumbnail)
                 )
@@ -129,7 +147,15 @@ class YouTubeImporter(
     }
 
     /** Downloads, converts and saves one video. Returns the new track id and where it was saved. */
-    private suspend fun download(m: VideoMeta, format: AudioFormat, toNas: Boolean, nasFolder: String, title: String, artist: String): Pair<Long, String> {
+    private suspend fun download(m: VideoMeta, format: AudioFormat, toNas: Boolean, nasFolder: String, title: String, artist: String): Pair<Long, String> =
+        try { downloadOnce(m, format, toNas, nasFolder, title, artist, cookies = false) }
+        catch (t: Throwable) {
+            if (t is kotlinx.coroutines.CancellationException || account.cookieFile == null) throw t
+            // Age-restricted / "confirm you're not a bot" videos: retry as the signed-in user.
+            downloadOnce(m, format, toNas, nasFolder, title, artist, cookies = true)
+        }
+
+    private suspend fun downloadOnce(m: VideoMeta, format: AudioFormat, toNas: Boolean, nasFolder: String, title: String, artist: String, cookies: Boolean): Pair<Long, String> {
         val work = File(context.cacheDir, "yt").apply { deleteRecursively(); mkdirs() }
         try {
             _state.value = ImportState.Running(m, ImportStep.DOWNLOAD, 0f, "Starting…")
@@ -142,7 +168,7 @@ class YouTubeImporter(
                 addOption("--embed-thumbnail")
                 addOption("--convert-thumbnails", "jpg")
                 addOption("-o", File(work, "%(title).120B.%(ext)s").absolutePath)
-                withCookies()
+                common(cookies)
             }
             withContext(Dispatchers.IO) {
                 YoutubeDL.getInstance().execute(req, processId) { progress, _, line ->
@@ -185,6 +211,7 @@ class YouTubeImporter(
             addOption("--playlist-start", (start + 1).toString())
             addOption("--playlist-end", (start + count).toString())
             addOption("--cookies", cookies.absolutePath)
+            common(cookies = false)
         }
         val out = withContext(Dispatchers.IO) { YoutubeDL.getInstance().execute(req, "lumen-likes").out }
         val json = org.json.JSONObject(out.substring(out.indexOf('{')))
@@ -198,7 +225,7 @@ class YouTubeImporter(
         }
     }
 
-    data class BatchState(val total: Int = 0, val done: Int = 0, val failed: Int = 0, val current: String? = null) {
+    data class BatchState(val total: Int = 0, val done: Int = 0, val failed: Int = 0, val current: String? = null, val errors: List<Pair<String, String>> = emptyList()) {
         val active get() = current != null
     }
     private val _batch = MutableStateFlow(BatchState())
@@ -210,18 +237,24 @@ class YouTubeImporter(
         job?.cancel()
         job = scope.launch {
             var done = 0; var failed = 0
+            val errors = mutableListOf<Pair<String, String>>()
             try {
+                _batch.value = BatchState(items.size, 0, 0, "Preparing the import engine…")
                 ensureInit()
                 items.forEach { m ->
-                    _batch.value = BatchState(items.size, done, failed, m.title)
+                    _batch.value = BatchState(items.size, done, failed, m.title, errors.toList())
                     val p = FilenameParser.parse(m.title + ".x")
                     val artist = p.artist.ifBlank { m.channel }
                     try { download(m, format, toNas, nasFolder, p.title.ifBlank { m.title }, artist); done++ }
-                    catch (t: Throwable) { if (t is kotlinx.coroutines.CancellationException) throw t; failed++ }
+                    catch (t: Throwable) {
+                        if (t is kotlinx.coroutines.CancellationException) throw t
+                        failed++; errors += m.title to friendly(t)
+                        android.util.Log.w("LumenImport", "Import failed: ${m.url}", t)
+                    }
                 }
                 _state.value = ImportState.Idle
             } finally {
-                _batch.value = BatchState(items.size, done, failed, null)
+                _batch.value = BatchState(items.size, done, failed, null, errors.toList())
             }
         }
     }
@@ -276,6 +309,8 @@ class YouTubeImporter(
             track.id
         }
 
+    fun clearBatch() { if (!_batch.value.active) _batch.value = BatchState() }
+
     fun cancel() {
         runCatching { YoutubeDL.getInstance().destroyProcessById(processId) }
         job?.cancel()
@@ -292,7 +327,11 @@ class YouTubeImporter(
     private fun friendly(t: Throwable): String {
         val m = t.message ?: t.javaClass.simpleName
         return when {
-            m.contains("Sign in to confirm", true) || m.contains("bot", true) -> "YouTube asked for sign-in for this video. Try updating the import engine in Settings, or use “Pick an audio file”."
+            m.contains("JavaScript runtime", true) || m.contains("n challenge", true) || m.contains("Requested format is not available", true) ->
+                "YouTube blocked the download engine. Tap the refresh button on the Import tab to update it, then try again."
+            m.contains("Sign in to confirm", true) || m.contains("bot", true) -> "YouTube asked for sign-in for this video. Sign in to YouTube on the Import tab, then try again."
+            m.contains("STATUS_ACCESS_DENIED") -> "Your NAS account can’t write to that folder"
+            m.contains("STATUS_OBJECT_PATH_NOT_FOUND") -> "That NAS folder doesn’t exist anymore"
             m.contains("Private video", true) -> "This video is private."
             m.contains("Video unavailable", true) -> "This video is unavailable."
             m.contains("NAS", true) || m.contains("connect", true) -> "Couldn’t reach your NAS: $m"

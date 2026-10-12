@@ -6,6 +6,7 @@ import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -58,6 +59,7 @@ import com.lumen.player.ui.icons.LIcons
 import com.lumen.player.ui.nav.LocalEnv
 import com.lumen.player.ui.nav.Routes
 import com.lumen.player.ui.theme.Lumen
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private const val SIGN_IN_URL = "https://accounts.google.com/ServiceLogin?service=youtube&passive=true&continue=https%3A%2F%2Fm.youtube.com%2F"
@@ -192,8 +194,12 @@ fun YouTubeLikesScreen() {
         }
         item("src") { Segmented(LikeSource.entries.map { it.label }, source, { source = it; selected.clear() }) }
         item("dest") {
-            LText("Saves to ${if (toNas) "NAS › ${settings.importFolder.replace("/", " › ")}" else "this phone"} as ${settings.importFormat.name} · change on the Import tab",
-                Lumen.type.caption, Lumen.colors.textSecondary)
+            Row(Modifier.fillMaxWidth().pressable(scaleTo = .98f) { pickDestination(env, o, toNas, settings.importFolder) { n, f -> scope.launch { c.settings.setImportToNas(n); c.settings.setImportFolder(f) } } },
+                verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LIcon(if (toNas) LIcons.folder else LIcons.phone, 16.dp, Lumen.colors.accentText)
+                LText("Default: ${destLabel(toNas, settings.importFolder)} · ${settings.importFormat.name}", Lumen.type.caption, Lumen.colors.textSecondary, Modifier.weight(1f), maxLines = 1)
+                LText("Change", Lumen.type.label, Lumen.colors.accentText, upper = true)
+            }
         }
         if (batch.active || batch.total > 0) item("batch") {
             Glass(Modifier.fillMaxWidth(), strong = true) {
@@ -202,10 +208,17 @@ fun YouTubeLikesScreen() {
                         LText(if (batch.active) "Importing ${batch.done + batch.failed + 1} of ${batch.total}" else "Imported ${batch.done} of ${batch.total}${if (batch.failed > 0) " · ${batch.failed} failed" else ""}",
                             Lumen.type.label, Modifier.weight(1f), upper = true)
                         if (batch.active) LButton("Stop", { c.importer.cancel() }, kind = BtnKind.Ghost, height = 36.dp)
+                        else LButton("Dismiss", { c.importer.clearBatch() }, kind = BtnKind.Ghost, height = 36.dp)
                     }
                     if (batch.active) {
                         LinearBar((batch.done + batch.failed).toFloat() / batch.total.coerceAtLeast(1))
                         LText(batch.current.orEmpty(), Lumen.type.bodyS, Lumen.colors.textSecondary, maxLines = 1)
+                    }
+                    batch.errors.takeLast(3).forEach { (title, why) ->
+                        Column {
+                            LText(title, Lumen.type.bodyS, Lumen.colors.textPrimary, maxLines = 1)
+                            LText(why, Lumen.type.caption, Lumen.colors.danger, maxLines = 3)
+                        }
                     }
                 }
             }
@@ -220,9 +233,11 @@ fun YouTubeLikesScreen() {
                 }, kind = BtnKind.Glass, height = 40.dp, enabled = notImported.isNotEmpty())
                 LButton("Import${if (selected.isNotEmpty()) " ${selected.size}" else ""}", {
                     val pick = items.filter { it.id in selected }
-                    c.importer.importMany(pick, settings.importFormat, toNas, settings.importFolder)
-                    selected.clear()
-                    o.toast("Importing ${pick.size} song${if (pick.size == 1) "" else "s"}", ToastKind.Info)
+                    pickDestination(env, o, toNas, settings.importFolder, title = "Save ${pick.size} song${if (pick.size == 1) "" else "s"} to") { n, f ->
+                        c.importer.importMany(pick, settings.importFormat, n, f)
+                        selected.clear()
+                        o.toast("Importing ${pick.size} song${if (pick.size == 1) "" else "s"} to ${destLabel(n, f)}", ToastKind.Info)
+                    }
                 }, icon = LIcons.download, height = 40.dp, enabled = selected.isNotEmpty() && !batch.active)
             }
         }
@@ -232,7 +247,9 @@ fun YouTubeLikesScreen() {
                     onToggle = { if (m.id in imported) Unit else if (m.id in selected) selected.remove(m.id) else selected.add(m.id) },
                     onImport = {
                         if (batch.active) o.toast("Wait for the current import to finish", ToastKind.Info)
-                        else { c.importer.importMany(listOf(m), settings.importFormat, toNas, settings.importFolder); o.toast("Importing “${m.title}”", ToastKind.Info) }
+                        else pickDestination(env, o, toNas, settings.importFolder, title = "Save “${m.title}” to") { n, f ->
+                            c.importer.importMany(listOf(m), settings.importFormat, n, f); o.toast("Importing to ${destLabel(n, f)}", ToastKind.Info)
+                        }
                     })
             }
         }
@@ -265,7 +282,8 @@ private fun LikeRow(m: VideoMeta, imported: Boolean, selected: Boolean, onToggle
         Modifier.fillMaxWidth().heightIn(min = 68.dp).pressable(scaleTo = .98f, onClick = onToggle),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(24.dp).clip(CircleShape).background(if (selected) cc.accent else cc.glassFillStrong), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(24.dp).clip(CircleShape).background(if (selected) cc.accent else androidx.compose.ui.graphics.Color.Transparent)
+            .then(if (selected) Modifier else Modifier.border(2.dp, cc.textSecondary, CircleShape)), contentAlignment = Alignment.Center) {
             if (selected) LIcon(LIcons.check, 16.dp, cc.onAccent)
         }
         ArtworkUrl(m.thumbnail.orEmpty(), Modifier.width(88.dp).size(88.dp, 50.dp), radius = 10.dp)
@@ -304,5 +322,33 @@ private fun likesError(t: Throwable): String {
             "YouTube didn’t accept the saved sign-in. Sign in again."
         m.contains("does not exist", true) -> "That likes list isn’t available for this account."
         else -> "Couldn’t load your likes: " + (m.lineSequence().lastOrNull { it.isNotBlank() }?.take(160) ?: m)
+    }
+}
+
+fun destLabel(toNas: Boolean, folder: String) = if (!toNas) "This phone" else "NAS › " + folder.ifBlank { "Music" }.replace("/", " › ")
+
+/** Lets the person choose where an import goes: this phone, or any folder in their NAS music library. */
+fun pickDestination(env: com.lumen.player.ui.nav.Env, o: com.lumen.player.ui.components.Overlays, toNas: Boolean, folder: String,
+                    title: String = "Save imports to", onPick: (toNas: Boolean, folder: String) -> Unit) {
+    val c = env.c
+    c.appScope.launch {
+        val folders = runCatching { c.db.folders().all().first() }.getOrDefault(emptyList())
+            .map { it.path }.filter { it.isNotBlank() }
+        val nasOk = c.nas.config.isConfigured
+        val options = (listOf("Imported") + folders).distinct()
+        val items = buildList {
+            add(com.lumen.player.ui.components.MenuItem(LIcons.phone, "This phone (offline)", checked = !toNas) { onPick(false, folder) })
+            if (nasOk) options.forEach { p ->
+                val depth = p.count { it == '/' }
+                add(com.lumen.player.ui.components.MenuItem(LIcons.folder, "  ".repeat(depth) + p.substringAfterLast('/') + if (p == "Imported" && p !in folders) " (new)" else "",
+                    checked = toNas && folder == p, trailing = p.substringBeforeLast('/', "").replace("/", " › ").ifBlank { null }) { onPick(true, p) })
+            }
+            if (nasOk) add(com.lumen.player.ui.components.MenuItem(LIcons.plus, "New folder…") {
+                o.prompt(com.lumen.player.ui.components.PromptSpec("New NAS folder", "", "e.g. Playlists/Road Trip", "Use folder") { name ->
+                    val clean = name.trim().trim('/'); if (clean.isNotEmpty()) onPick(true, clean)
+                })
+            })
+        }
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) { o.menu(title, "Imported songs are saved here and added to your library", null, items) }
     }
 }

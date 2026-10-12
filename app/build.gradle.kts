@@ -98,6 +98,6 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:1.78.1") // smbj crypto (NTLM/MD4/signing) — Android JCE lacks these
 
     // YouTube audio import (yt-dlp + ffmpeg for MP3 conversion)
-    implementation("io.github.junkfood02.youtubedl-android:library:0.17.2")
-    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.17.2")
+    implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:0.18.1")
 }

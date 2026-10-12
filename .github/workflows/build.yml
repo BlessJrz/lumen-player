@@ -17,7 +17,7 @@ jobs:
       - name: Fetch fonts
         run: ./scripts/fetch_fonts.sh
       - name: Build
-        run: ./gradlew --no-daemon assembleRelease 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
+        run: (./scripts/build_qjs.sh && ./gradlew --no-daemon assembleRelease) 2>&1 | tee build.log; exit ${PIPESTATUS[0]}
       - name: Publish build errors
         if: failure()
         run: |

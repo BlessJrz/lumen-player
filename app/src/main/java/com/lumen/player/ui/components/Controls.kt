@@ -85,7 +85,8 @@ fun LButton(
     height: Dp = 48.dp,
 ) {
     val c = Lumen.colors
-    val fg = when (kind) { BtnKind.Primary -> c.onAccent; BtnKind.Danger -> Color.White; BtnKind.Ghost -> c.accentText; BtnKind.Glass -> c.textPrimary }
+    val fg = if (!enabled && kind != BtnKind.Glass) c.textTertiary
+        else when (kind) { BtnKind.Primary -> c.onAccent; BtnKind.Danger -> Color.White; BtnKind.Ghost -> c.accentText; BtnKind.Glass -> c.textPrimary }
     val content: @Composable RowScope.() -> Unit = {
         if (icon != null) LIcon(icon, 18.dp, fg)
         LText(text, Lumen.type.label, fg, maxLines = 1, upper = true)
@@ -97,10 +98,12 @@ fun LButton(
             Row(Modifier.padding(horizontal = 22.dp).fillMaxHeight().align(Alignment.Center).alpha(alpha), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically, content = content)
         }
         else -> {
-            val bg = when (kind) { BtnKind.Primary -> c.accent; BtnKind.Danger -> c.danger; else -> Color.Transparent }
+            // Disabled buttons are solid and muted (no translucent accent + glow, which rendered as smears).
+            val bg = if (!enabled && kind != BtnKind.Ghost) c.glassFillStrong
+                else when (kind) { BtnKind.Primary -> c.accent; BtnKind.Danger -> c.danger; else -> Color.Transparent }
             Row(
-                m.then(if (kind == BtnKind.Primary && Lumen.theme.glass.neon) Modifier.shadow(14.dp, shape(Lumen.shapes.button), ambientColor = c.accent, spotColor = c.accent) else Modifier)
-                    .clip(shape(Lumen.shapes.button)).background(bg.copy(alpha = bg.alpha * alpha)).padding(horizontal = 22.dp),
+                m.then(if (enabled && kind == BtnKind.Primary && Lumen.theme.glass.neon) Modifier.shadow(14.dp, shape(Lumen.shapes.button), ambientColor = c.accent, spotColor = c.accent) else Modifier)
+                    .clip(shape(Lumen.shapes.button)).background(bg).padding(horizontal = 22.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically, content = content,
             )
         }
