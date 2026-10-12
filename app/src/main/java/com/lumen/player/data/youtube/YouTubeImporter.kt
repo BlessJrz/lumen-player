@@ -71,9 +71,6 @@ class YouTubeImporter(
 
     private val enginePrefs = context.getSharedPreferences("ytdlp", Context.MODE_PRIVATE)
 
-    /** Bundled JavaScript engine (QuickJS) — yt-dlp needs one to unlock YouTube's audio streams. */
-    private val qjs: File? get() = File(context.applicationInfo.nativeLibraryDir, "libqjs.so").takeIf { it.exists() }
-
     private suspend fun ensureInit() = initLock.withLock {
         if (!initialized) {
             withContext(Dispatchers.IO) {
@@ -106,9 +103,8 @@ class YouTubeImporter(
         }
     }
 
-    /** Options every yt-dlp call gets: the JS engine, and the person's YouTube sign-in when asked for. */
+    /** Options every yt-dlp call gets. (The engine library itself adds its bundled QuickJS JavaScript runtime.) */
     private fun YoutubeDLRequest.common(cookies: Boolean) {
-        qjs?.let { addOption("--js-runtimes", "quickjs:${it.absolutePath}") }
         if (cookies) withCookies()
     }
 
