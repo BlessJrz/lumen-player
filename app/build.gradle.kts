@@ -45,7 +45,7 @@ android {
     buildFeatures { compose = true; buildConfig = true }
     packaging {
         jniLibs { useLegacyPackaging = true } // yt-dlp / ffmpeg binaries must be extracted
-        resources { excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module") }
+        resources { excludes += setOf("META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/*.kotlin_module", "META-INF/versions/9/OSGI-INF/MANIFEST.MF") }
     }
 }
 
@@ -94,6 +94,7 @@ dependencies {
     // NAS protocols
     implementation("com.hierynomus:smbj:0.13.0")
     implementation("com.rapid7.client:dcerpc:0.12.13")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1") // smbj crypto (NTLM/MD4/signing) — Android JCE lacks these
 
     // YouTube audio import (yt-dlp + ffmpeg for MP3 conversion)
     implementation("io.github.junkfood02.youtubedl-android:library:0.17.2")

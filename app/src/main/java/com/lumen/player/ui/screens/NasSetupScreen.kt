@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.lumen.player.data.nas.friendlyNasError
 import com.lumen.player.data.nas.NasConfig
 import com.lumen.player.data.nas.NasEntry
 import com.lumen.player.data.nas.NasProtocol
@@ -120,17 +121,17 @@ fun NasSetupScreen() {
             }
         }
         item("proto") { Segmented(listOf("SMB", "WebDAV"), cfg.protocol.ordinal, { cfg = cfg.copy(protocol = NasProtocol.entries[it]) }) }
-        item("name") { LField("Name", cfg.name, { cfg = cfg.copy(name = it) }, icon = LIcons.tag, placeholder = "WrightFamily NAS") }
-        item("lan") { LField("Home network address", cfg.lanHost, { cfg = cfg.copy(lanHost = it.trim()) }, icon = LIcons.wifi, placeholder = "192.168.1.40", keyboard = KeyboardType.Uri) }
+        item("name") { LField("Name", cfg.name, { cfg = cfg.copy(name = it) }, icon = LIcons.tag, placeholder = "e.g. Home NAS") }
+        item("lan") { LField("Home network address", cfg.lanHost, { cfg = cfg.copy(lanHost = it.trim()) }, icon = LIcons.wifi, placeholder = "e.g. 192.168.1.x (optional)", keyboard = KeyboardType.Uri) }
         item("remote") {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                LField("Away-from-home address (Tailscale)", cfg.remoteHost, { cfg = cfg.copy(remoteHost = it.trim()) }, icon = LIcons.globe, placeholder = "100.x.y.z or nas.tailnet.ts.net", keyboard = KeyboardType.Uri)
+                LField("Away-from-home address (Tailscale)", cfg.remoteHost, { cfg = cfg.copy(remoteHost = it.trim()) }, icon = LIcons.globe, placeholder = "e.g. 100.x.y.z (optional)", keyboard = KeyboardType.Uri)
                 LText("Install Tailscale on your phone and sign in with the same account as the NAS’s Tailscale app. Lumen switches to this address automatically when home Wi-Fi isn’t reachable.", Lumen.type.caption, Lumen.colors.textTertiary)
             }
         }
         item("cred") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                LField("Username", cfg.username, { cfg = cfg.copy(username = it) }, Modifier.weight(1f), icon = LIcons.user, placeholder = "Khalil")
+                LField("Username", cfg.username, { cfg = cfg.copy(username = it) }, Modifier.weight(1f), icon = LIcons.user, placeholder = "your UGOS login")
                 LField("Password", cfg.password, { cfg = cfg.copy(password = it) }, Modifier.weight(1f), icon = LIcons.lock, password = true)
             }
         }
@@ -142,19 +143,19 @@ fun NasSetupScreen() {
         }
         item("share") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
-                LField(if (cfg.protocol == NasProtocol.SMB) "Shared folder" else "Base path", cfg.share, { cfg = cfg.copy(share = it) }, Modifier.weight(1f), icon = LIcons.drive, placeholder = if (cfg.protocol == NasProtocol.SMB) "e.g. personal_folder" else "optional")
+                LField(if (cfg.protocol == NasProtocol.SMB) "Shared folder" else "Base path", cfg.share, { cfg = cfg.copy(share = it) }, Modifier.weight(1f), icon = LIcons.drive, placeholder = if (cfg.protocol == NasProtocol.SMB) "auto-detect" else "optional")
                 if (cfg.protocol == NasProtocol.SMB) LButton("List", {
                     c.appScope.launch {
                         c.nas.listShares(cfg).onSuccess { shares ->
                             o.menu("Shared folders", cfg.lanHost, null, shares.map { s -> com.lumen.player.ui.components.MenuItem(LIcons.drive, s, checked = s == cfg.share) { cfg = cfg.copy(share = s) } })
-                        }.onFailure { o.toast("Couldn’t list shares: ${it.message}", ToastKind.Error) }
+                        }.onFailure { o.toast("Couldn’t list shares: ${friendlyNasError(it)}", ToastKind.Error) }
                     }
                 }, kind = BtnKind.Glass)
             }
         }
         item("root") {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Bottom) {
-                LField("Music folder", cfg.rootPath, { cfg = cfg.copy(rootPath = it.trim('/')) }, Modifier.weight(1f), icon = LIcons.folder, placeholder = "Music")
+                LField("Music folder", cfg.rootPath, { cfg = cfg.copy(rootPath = it.trim('/')) }, Modifier.weight(1f), icon = LIcons.folder, placeholder = "e.g. Music")
                 LButton("Browse", { browseSheet(env, o, cfg) { cfg = cfg.copy(rootPath = it) } }, kind = BtnKind.Glass)
             }
         }
@@ -177,14 +178,14 @@ fun NasSetupScreen() {
                 LButton("Test", {
                     testing = true; result = null
                     c.appScope.launch {
-                        val r = c.nas.test(cfg); testing = false; ok = r.isSuccess
-                        result = r.fold({ "Connected via $it — music folder found" }, { "Couldn’t connect: ${it.message ?: it.javaClass.simpleName}" })
+                        val r = resolveAndTest(c.nas, cfg) { cfg = it }; testing = false; ok = r.isSuccess
+                        result = r.fold({ "Connected via $it — music folder found in “${cfg.share}”" }, { "Couldn’t connect: ${friendlyNasError(it)}" })
                     }
                 }, Modifier.weight(1f), icon = LIcons.wifi, kind = BtnKind.Glass, enabled = cfg.isConfigured && !testing)
                 LButton("Connect & scan", {
                     testing = true; result = null
                     c.appScope.launch {
-                        val r = c.nas.test(cfg)
+                        val r = resolveAndTest(c.nas, cfg) { cfg = it }
                         testing = false; ok = r.isSuccess
                         if (r.isSuccess) {
                             c.nas.save(cfg)
@@ -192,7 +193,7 @@ fun NasSetupScreen() {
                             c.refreshLibrary()
                             c.schedulePeriodicScan(30)
                             o.toast("Connected — building your library", ToastKind.Success)
-                        } else result = "Couldn’t connect: ${r.exceptionOrNull()?.message}"
+                        } else result = "Couldn’t connect: ${friendlyNasError(r.exceptionOrNull())}"
                     }
                 }, Modifier.weight(1.4f), icon = LIcons.refresh, enabled = cfg.isConfigured && !testing)
             }
@@ -244,4 +245,19 @@ private fun browseSheet(env: Env, o: Overlays, cfg: NasConfig, onPick: (String) 
         }
         LButton("Use “/${path.ifBlank { "(share root)" }}”", { onPick(path); close() }, Modifier.fillMaxWidth(), icon = LIcons.check)
     }
+}
+
+/** Validates the form, auto-detects the shared folder if blank, then tests the connection. */
+private suspend fun resolveAndTest(nas: com.lumen.player.data.nas.NasManager, cfg0: NasConfig, update: (NasConfig) -> Unit): Result<String> {
+    var cfg = cfg0
+    if (!cfg.isConfigured) return Result.failure(IllegalArgumentException("Enter the NAS address (home or Tailscale)"))
+    if (cfg.protocol == NasProtocol.SMB) {
+        if (cfg.username.isBlank()) return Result.failure(IllegalArgumentException("Enter your NAS username (the one you sign in to UGOS with)"))
+        if (cfg.password.isEmpty()) return Result.failure(IllegalArgumentException("Enter your NAS password"))
+        if (cfg.share.isBlank()) {
+            val s = nas.findShare(cfg).getOrElse { return Result.failure(it) }
+            cfg = cfg.copy(share = s); update(cfg)
+        }
+    }
+    return nas.test(cfg)
 }

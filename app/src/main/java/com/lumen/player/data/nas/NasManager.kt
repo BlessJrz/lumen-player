@@ -85,6 +85,25 @@ class NasManager(private val store: NasConfigStore, private val http: OkHttpClie
         Result.failure(last ?: IllegalStateException("No host"))
     }
 
+    /**
+     * When no shared folder is given, finds the share that contains the music folder (UGOS names the personal
+     * folder share differently across versions, e.g. "personal_folder" or the username).
+     */
+    suspend fun findShare(c: NasConfig): Result<String> = withContext(Dispatchers.IO) {
+        val shares = listShares(c).getOrElse { return@withContext Result.failure(it) }
+        val ordered = shares.sortedBy { s ->
+            val l = s.lowercase()
+            when { "personal" in l || l == c.username.lowercase() || "home" in l -> 0; "music" in l -> 1; else -> 2 }
+        }
+        for (h in c.hosts) for (s in ordered) {
+            val ok = runCatching { SmbNasClient.connect(h, c.copy(share = s)).use { it.list("") } }.isSuccess
+            if (ok) return@withContext Result.success(s)
+        }
+        Result.failure(IllegalStateException(
+            if (shares.isEmpty()) "No shared folders visible — check SMB is on in UGOS Control Panel → File Service"
+            else "Couldn’t find a “${c.rootPath}” folder in: ${shares.joinToString()}. Tap List to pick the shared folder."))
+    }
+
     suspend fun listShares(c: NasConfig): Result<List<String>> = withContext(Dispatchers.IO) {
         var last: Throwable? = null
         for (h in c.hosts) {
@@ -106,5 +125,21 @@ class NasManager(private val store: NasConfigStore, private val http: OkHttpClie
             } catch (t: Throwable) { last = t }
         }
         Result.failure(last ?: IllegalStateException("No host"))
+    }
+}
+
+/** Turns low-level SMB/network exceptions into something a person can act on. */
+fun friendlyNasError(t: Throwable?): String {
+    val m = (t?.message ?: t?.javaClass?.simpleName ?: "Unknown error")
+    val all = generateSequence(t) { it.cause }.joinToString(" | ") { (it.message ?: "") + " " + it.javaClass.simpleName }
+    return when {
+        "STATUS_LOGON_FAILURE" in all -> "Wrong username or password"
+        "STATUS_ACCESS_DENIED" in all -> "Access denied — this account can’t open that folder"
+        "STATUS_BAD_NETWORK_NAME" in all -> "That shared folder doesn’t exist — tap List to pick one"
+        "STATUS_OBJECT_NAME_NOT_FOUND" in all || "STATUS_OBJECT_PATH_NOT_FOUND" in all -> "Shared folder found, but no music folder at that path — tap Browse"
+        "UnknownHost" in all -> "Can’t find that address — check it’s typed correctly"
+        "ConnectException" in all || "NoRouteToHost" in all || "Connection refused" in all -> "NAS not reachable at that address (is SMB on, and are you on home Wi-Fi or Tailscale?)"
+        "SocketTimeout" in all || "TimeoutException" in all -> "Timed out reaching the NAS — if you’re away, make sure Tailscale is connected on the phone"
+        else -> m
     }
 }

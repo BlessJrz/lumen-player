@@ -4,6 +4,7 @@ import com.hierynomus.msdtyp.AccessMask
 import com.hierynomus.msfscc.FileAttributes
 import com.hierynomus.mssmb2.SMB2CreateDisposition
 import com.hierynomus.mssmb2.SMB2ShareAccess
+import com.hierynomus.security.bc.BCSecurityProvider
 import com.hierynomus.smbj.SMBClient
 import com.hierynomus.smbj.SmbConfig
 import com.hierynomus.smbj.auth.AuthenticationContext
@@ -32,14 +33,16 @@ class SmbNasClient private constructor(
             .withTimeout(20, TimeUnit.SECONDS)
             .withSoTimeout(40, TimeUnit.SECONDS)
             .withMultiProtocolNegotiate(true)
+            .withSecurityProvider(BCSecurityProvider())
+            .withSigningRequired(false)
             .build()
 
         fun connect(host: String, cfg: NasConfig, shareOverride: String? = null): SmbNasClient {
+            require(cfg.username.isNotBlank()) { "Enter your NAS username (the one you sign in to UGOS with)" }
             val client = SMBClient(config())
             val conn = if (cfg.port > 0) client.connect(host, cfg.port) else client.connect(host)
-            val auth = if (cfg.username.isBlank()) AuthenticationContext.anonymous()
-            else AuthenticationContext(cfg.username, cfg.password.toCharArray(), cfg.domain.ifBlank { null })
-            val session = conn.authenticate(auth)
+            val auth = AuthenticationContext(cfg.username.trim(), cfg.password.toCharArray(), cfg.domain.ifBlank { null })
+            val session = try { conn.authenticate(auth) } catch (t: Throwable) { runCatching { conn.close() }; throw t }
             val shareName = shareOverride ?: cfg.share
             val share = if (shareName.isNotBlank()) session.connectShare(shareName) as DiskShare else null
             return SmbNasClient(host, client, conn, session, share, if (shareOverride != null) "" else cfg.rootPath)
