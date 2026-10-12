@@ -343,7 +343,7 @@ fun NowPlayingPanel(ps: PlayerState, modifier: Modifier = Modifier) {
     val c = Lumen.colors
     val o = LocalOverlays.current
     val t = ps.current
-    Glass(modifier, radius = Lumen.shapes.panel, strong = Lumen.design.name != "OBSIDIAN", blur = true) {
+    Glass(modifier, radius = Lumen.shapes.panel, strong = Lumen.design.name != "OBSIDIAN") {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LText("Now playing", Lumen.type.overline, c.textTertiary, Modifier.weight(1f), upper = true)

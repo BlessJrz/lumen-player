@@ -189,7 +189,7 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             if (fluid) {
-                                TabBar(Tab.cover, tab, ::go, Modifier.weight(1f, fill = false))
+                                TabBar(Tab.cover, tab, ::go)
                                 Spacer(Modifier.weight(1f))
                                 AnimatedVisibility(ps.hasMedia && !playerOpen, enter = scaleIn(spring(dampingRatio = .6f)) + fadeIn(), exit = fadeOut()) {
                                     CompositionLocalProvider(LocalSharedArt provides SharedArt(this@SharedTransitionLayout, this)) {

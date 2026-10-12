@@ -63,10 +63,10 @@ fun TabBar(tabs: List<Tab>, current: Tab?, onSelect: (Tab) -> Unit, modifier: Mo
                 tabs.forEach { t ->
                     val on = t == current
                     if (on) Row(
-                        Modifier.height(52.dp).clip(CircleShape).background(c.accent).pressable { onSelect(t) }.padding(horizontal = 18.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) { LIcon(t.icon, 22.dp, c.onAccent); LText(t.label, Lumen.type.label, c.onAccent) }
-                    else Box(Modifier.size(52.dp).clip(CircleShape).pressable { onSelect(t) }, contentAlignment = Alignment.Center) { LIcon(t.icon, 22.dp, c.textSecondary) }
+                        Modifier.height(52.dp).clip(CircleShape).background(c.accent).pressable { onSelect(t) }.padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) { LIcon(t.icon, 20.dp, c.onAccent); LText(t.label, Lumen.type.label, c.onAccent, maxLines = 1) }
+                    else Box(Modifier.size(42.dp, 52.dp).clip(CircleShape).pressable { onSelect(t) }, contentAlignment = Alignment.Center) { LIcon(t.icon, 22.dp, c.textSecondary) }
                 }
             }
         }

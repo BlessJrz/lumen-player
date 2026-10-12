@@ -59,6 +59,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
@@ -293,7 +294,10 @@ private fun ColumnScope.AuroraPlayer(ps: PlayerState, t: TrackEntity, a: PlayerA
     val c = Lumen.colors
     val sleep by a.env.c.player.sleep.collectAsState()
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        ArtOrLyrics(t, ps, showLyrics, a, Modifier.fillMaxWidth().aspectRatio(1f), Lumen.shapes.panel, c.accent.copy(alpha = .5f))
+        BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val side = minOf(maxWidth, (LocalConfiguration.current.screenHeightDp * 0.42f).dp)
+            ArtOrLyrics(t, ps, showLyrics, a, Modifier.size(side), Lumen.shapes.panel, c.accent.copy(alpha = .5f))
+        }
         TitleRow(t, a)
         Timeline(ps, a)
         Transport(ps, a)
@@ -328,7 +332,10 @@ private fun ColumnScope.ObsidianPlayer(ps: PlayerState, t: TrackEntity, a: Playe
     val c = Lumen.colors
     val sleep by a.env.c.player.sleep.collectAsState()
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        ArtOrLyrics(t, ps, showLyrics, a, Modifier.fillMaxWidth().aspectRatio(1f), 18.dp, Color.Black.copy(alpha = .6f))
+        BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            val side = minOf(maxWidth, (LocalConfiguration.current.screenHeightDp * 0.4f).dp)
+            ArtOrLyrics(t, ps, showLyrics, a, Modifier.size(side), 18.dp, Color.Black.copy(alpha = .6f))
+        }
         LText(listOfNotNull(t.trackNo?.let { "Track %02d".format(it) }, t.fileName.substringAfterLast('.').uppercase(), t.year?.toString(), fmtTime(t.durationMs)).joinToString(" · "), Lumen.type.overline, c.accentText, upper = true)
         TitleRow(t, a, Lumen.type.display)
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -401,7 +408,7 @@ private fun ColumnScope.FluidPlayer(ps: PlayerState, t: TrackEntity, a: PlayerAc
     val sleep by a.env.c.player.sleep.collectAsState()
     Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
         BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            val s = minOf(maxWidth, 380.dp)
+            val s = minOf(maxWidth, (LocalConfiguration.current.screenHeightDp * 0.42f).dp)
             if (showLyrics) LyricsView(t, ps, Modifier.size(s)) { a.p.seekToMs(it) } else Disc(t, ps, s, a.seek, a.toggleLyrics)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
