@@ -19,7 +19,7 @@ for d in AURORA OBSIDIAN FLUID; do
   done
 done
 go --es lumen.design AURORA --es lumen.theme DARK
-for r in "folder?path=Playlists%2FEmotional" search import downloads settings playlists nas; do
+for r in "folder?path=Playlists%2FEmotional" search import yt_likes downloads settings playlists nas; do
   n=$(echo "$r" | cut -d'?' -f1); go --es lumen.route "$r"; shot "cover-AURORA-DARK-4-$n" 4
 done
 size 1968x2184 420   # Fold7 inner screen ≈ 750dp
