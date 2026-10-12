@@ -132,7 +132,7 @@ private fun HomeBody(env: Env, count: Int, home: HomeData?, ps: PlayerState, sca
                 else -> Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Column(Modifier.weight(1f)) {
                         LText(greeting().let { if (it == "Late night") "Late night" else java.text.SimpleDateFormat("EEEE", java.util.Locale.getDefault()).format(java.util.Date()) + " " + it.substringAfter("Good ").lowercase() }, Lumen.type.overline, Lumen.colors.textTertiary, upper = true)
-                        LText("${greeting()}, Khalil", Lumen.type.titleL, maxLines = 1)
+                        LText("${greeting()}, Khalil", Lumen.type.titleL, maxLines = 2)
                     }
                     if (env.wide) StatusPill(pill, pillColor, onClick = { env.nav.navigate(Routes.NAS) })
                     else { IconBtn(LIcons.search, { env.nav.navigate(Routes.SEARCH) }, size = 40.dp); Avatar(avatarTrack) { env.nav.navigate(Routes.SETTINGS) } }
@@ -271,7 +271,7 @@ private fun Hero(t: TrackEntity, ps: PlayerState, env: Env) {
     when (Lumen.design.name) {
         "OBSIDIAN" -> Glass(Modifier.fillMaxWidth().height(if (env.wide) 196.dp else 156.dp).pressable(scaleTo = .98f) { env.openPlayer() }) {
             Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                Artwork(t, Modifier.fillMaxHeight().aspect1(), radius = 10.dp)
+                Artwork(t, Modifier.size(if (env.wide) 112.dp else 132.dp), radius = 10.dp)
                 Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     LText(if (isCurrent) "Now · ${fmtTime(ps.positionMs)} / ${fmtTime(ps.durationMs)}" else "Resume", Lumen.type.overline, c.accentText, upper = true)
                     LText(t.title, Lumen.type.titleL, maxLines = 2)
