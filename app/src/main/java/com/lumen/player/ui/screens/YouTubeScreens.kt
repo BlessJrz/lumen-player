@@ -318,6 +318,7 @@ fun YouTubeSignInCard(onSignIn: () -> Unit) {
 private fun likesError(t: Throwable): String {
     val m = t.message ?: t.javaClass.simpleName
     return when {
+        m.contains("Import engine", true) -> m.take(300)
         m.contains("Sign in", true) || m.contains("cookies", true) || m.contains("401") || m.contains("private", true) ->
             "YouTube didn’t accept the saved sign-in. Sign in again."
         m.contains("does not exist", true) -> "That likes list isn’t available for this account."

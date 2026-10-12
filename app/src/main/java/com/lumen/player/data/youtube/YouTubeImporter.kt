@@ -77,8 +77,24 @@ class YouTubeImporter(
     private suspend fun ensureInit() = initLock.withLock {
         if (!initialized) {
             withContext(Dispatchers.IO) {
-                YoutubeDL.getInstance().init(context)
-                FFmpeg.getInstance().init(context)
+                try {
+                    YoutubeDL.getInstance().init(context)
+                    FFmpeg.getInstance().init(context)
+                } catch (t: Throwable) {
+                    // Usually leftovers from an older engine version (e.g. after an app update). Start clean once.
+                    android.util.Log.w("LumenImport", "Engine init failed, resetting", t)
+                    File(context.noBackupFilesDir, "youtubedl-android").deleteRecursively()
+                    File(context.filesDir, "youtubedl-android").deleteRecursively()
+                    File(context.applicationInfo.dataDir, "shared_prefs").listFiles()
+                        ?.filter { it.name.contains("youtubedl", true) || it.name.contains("ffmpeg", true) }?.forEach { it.delete() }
+                    enginePrefs.edit().remove("updated").apply()
+                    try {
+                        YoutubeDL.getInstance().init(context)
+                        FFmpeg.getInstance().init(context)
+                    } catch (t2: Throwable) {
+                        throw IllegalStateException("Import engine couldn’t start: " + causeChain(t2), t2)
+                    }
+                }
             }
             initialized = true
         }
@@ -94,6 +110,25 @@ class YouTubeImporter(
     private fun YoutubeDLRequest.common(cookies: Boolean) {
         qjs?.let { addOption("--js-runtimes", "quickjs:${it.absolutePath}") }
         if (cookies) withCookies()
+    }
+
+    private fun causeChain(t: Throwable): String =
+        generateSequence(t) { it.cause }.take(4).map { "${it.javaClass.simpleName}: ${it.message ?: ""}" }.joinToString(" ← ")
+
+    /** CI self-test: starts the engine, updates yt-dlp and fetches info for a public video; results go to logcat. */
+    fun selfTest() {
+        scope.launch {
+            val tag = "LumenImport"
+            try {
+                ensureInit(); android.util.Log.i(tag, "SELFTEST init ok")
+                val v = withContext(Dispatchers.IO) { YoutubeDL.getInstance().version(context) }
+                android.util.Log.i(tag, "SELFTEST yt-dlp version $v")
+                val r = withContext(Dispatchers.IO) { YoutubeDL.getInstance().execute(YoutubeDLRequest("https://www.youtube.com/watch?v=jNQXAC9IVRw").apply { addOption("--simulate"); addOption("-v"); common(false) }) }
+                android.util.Log.i(tag, "SELFTEST simulate ok: " + r.out.takeLast(300))
+            } catch (t: Throwable) {
+                android.util.Log.e(tag, "SELFTEST failed: " + causeChain(t), t)
+            }
+        }
     }
 
     fun extractUrl(text: String): String? =

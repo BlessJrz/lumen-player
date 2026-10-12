@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
             if (url != null) pending.openImport = url
         }
         if (i.getStringExtra("open") == "player") pending.openPlayer = true
+        if (i.getStringExtra("lumen.selftest") == "engine") (application as LumenApp).container.importer.selfTest()
         i.getStringExtra("lumen.route")?.let { pending.route = it }
         val c = (application as LumenApp).container
         val design = i.getStringExtra("lumen.design")
