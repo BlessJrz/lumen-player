@@ -78,8 +78,8 @@ fun LText(
 }
 
 @Composable
-fun LText(text: String, style: TextStyle, modifier: Modifier, color: Color = Lumen.colors.textPrimary, maxLines: Int = Int.MAX_VALUE, align: TextAlign? = null, upper: Boolean = false) =
-    LText(text, style, color, modifier, maxLines, align, upper)
+fun LText(text: String, style: TextStyle, mod: Modifier, color: Color = Lumen.colors.textPrimary, maxLines: Int = Int.MAX_VALUE, align: TextAlign? = null, upper: Boolean = false) =
+    LText(text, style, color, mod, maxLines, align, upper)
 
 @Composable
 fun LIcon(icon: ImageVector, size: Dp = 22.dp, tint: Color = Lumen.colors.textPrimary, modifier: Modifier = Modifier) {
