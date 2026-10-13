@@ -158,6 +158,8 @@ fun LumenRoot(c: AppContainer, pending: PendingIntentAction) {
                                 composable(Routes.EQ) { EqualizerScreen() }
                                 composable(Routes.FAVORITES) { FavoritesScreen() }
                                 composable(Routes.HISTORY) { HistoryScreen() }
+                                composable(Routes.ALL_SONGS) { com.lumen.player.ui.screens.AllSongsScreen() }
+                                composable(Routes.RECENT) { com.lumen.player.ui.screens.RecentlyAddedScreen() }
                                 composable("folder?path={path}", listOf(navArgument("path") { type = NavType.StringType; defaultValue = "" })) { FolderScreen(it.arguments?.getString("path") ?: "") }
                                 composable("edit/{id}", listOf(navArgument("id") { type = NavType.LongType })) { MetadataEditorScreen(it.arguments?.getLong("id") ?: 0) }
                                 composable("artist?name={name}", listOf(navArgument("name") { type = NavType.StringType; defaultValue = "" })) { ArtistScreen(it.arguments?.getString("name") ?: "") }

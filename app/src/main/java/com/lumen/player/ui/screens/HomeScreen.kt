@@ -166,6 +166,7 @@ private fun HomeBody(env: Env, count: Int, home: HomeData?, ps: PlayerState, sca
             if (t != null) Hero(t, ps, env)
         }
         if (scan is ScanState.ReadingTags) item("scan") { ScanBanner(scan) }
+        if (filter == null) item("playall") { PlayAllRow(count) }
 
         if (filter == null) section("collections") {
             SectionHeader("Your collections", action = "All folders") { env.nav.navigate(Routes.LIBRARY) }
@@ -176,6 +177,10 @@ private fun HomeBody(env: Env, count: Int, home: HomeData?, ps: PlayerState, sca
                     CategoryCard(f.name, f.metaLine(), cover.value, { env.nav.navigate(Routes.folder(f.path)) }, width = if (env.wide) 220.dp else 176.dp, height = if (env.wide) 260.dp else 212.dp, onLongClick = { env.folderMenu(o, f.path, f.name) })
                 }
             }
+        }
+        if (filter == null && h.recentlyAdded.isNotEmpty()) section("added") {
+            SectionHeader("Recently added", action = "See all") { env.nav.navigate(Routes.RECENT) }
+            HRow { items(h.recentlyAdded, key = { "a${it.id}" }) { t -> AlbumCard(t.title, t.displayArtist(), t, { c.player.play(h.recentlyAdded, h.recentlyAdded.indexOf(t)) }, onLongClick = { env.trackMenu(o, t) }, onPlay = { c.player.play(listOf(t)) }) } }
         }
         if (h.continueListening.isNotEmpty() && filter == null) section("continue") {
             SectionHeader("Continue listening", action = "History") { env.nav.navigate(Routes.HISTORY) }
@@ -192,10 +197,6 @@ private fun HomeBody(env: Env, count: Int, home: HomeData?, ps: PlayerState, sca
         if (h.mostPlayed.isNotEmpty() && filter == null) section("most") {
             SectionHeader("Your most played")
             Column { h.mostPlayed.take(5).forEachIndexed { i, t -> TrackRow(t, { c.player.play(h.mostPlayed, i) }, playing = ps.current?.id == t.id, subtitle = "${t.displayArtist()} · ${t.playCount} plays", onMore = { env.trackMenu(o, t) }) } }
-        }
-        if (filter == null) section("added") {
-            SectionHeader("Recently added", action = "See all") { env.nav.navigate(Routes.LIBRARY) }
-            HRow { items(h.recentlyAdded, key = { "a${it.id}" }) { t -> AlbumCard(t.title, t.displayArtist(), t, { c.player.play(h.recentlyAdded, h.recentlyAdded.indexOf(t)) }, onLongClick = { env.trackMenu(o, t) }, onPlay = { c.player.play(listOf(t)) }) } }
         }
         if (h.favorites.isNotEmpty() && filter == null) section("favs") {
             SectionHeader("Favorites", action = "See all") { env.nav.navigate(Routes.FAVORITES) }

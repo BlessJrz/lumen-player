@@ -53,6 +53,8 @@ object Routes {
     const val EQ = "eq"
     const val FAVORITES = "favorites"
     const val HISTORY = "history"
+    const val ALL_SONGS = "all_songs"
+    const val RECENT = "recent"
     fun folder(path: String) = "folder?path=" + Uri.encode(path)
     fun playlist(id: Long) = "playlist/$id"
     fun edit(trackId: Long) = "edit/$trackId"

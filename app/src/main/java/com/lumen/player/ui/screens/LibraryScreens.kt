@@ -124,10 +124,13 @@ fun LibraryScreen() {
                 LText(scanLabel(scan).takeIf { scan !is com.lumen.player.data.scan.ScanState.Idle } ?: "$count songs", Lumen.type.caption, Lumen.colors.textTertiary, maxLines = 1)
             }
         }
+        item("playall") { PlayAllRow(count) }
         item("seg") { Segmented(listOf("Collections", "Albums", "Artists") + if (!env.wide) listOf("Playlists") else emptyList(), tab, { if (it == 3) env.nav.navigate(Routes.PLAYLISTS) else tab = it }) }
         if (tab == 0) {
             item("quick") {
                 val tiles = listOf(
+                    Triple(LIcons.music, "All songs", "$count songs") to { env.nav.navigate(Routes.ALL_SONGS) },
+                    Triple(LIcons.sparkle, "Recently added", "Newest first") to { env.nav.navigate(Routes.RECENT) },
                     Triple(LIcons.heartFilled, "Favorites", "${favs.size} songs") to { env.nav.navigate(Routes.FAVORITES) },
                     Triple(LIcons.download, "Downloaded", "${dl.size} songs") to { env.nav.navigate(Routes.DOWNLOADS) },
                     Triple(LIcons.history, "History", "Recently played") to { env.nav.navigate(Routes.HISTORY) },
@@ -370,6 +373,20 @@ fun FavoritesScreen() {
 }
 
 @Composable
+fun AllSongsScreen() {
+    val env = LocalEnv.current
+    TrackListScreen("All songs", "Library", env.c.library.allSongs, "No songs yet", "Connect your NAS and scan to see every song here.") { tracks ->
+        LText("${tracks.size} songs · A–Z", Lumen.type.bodyS, Lumen.colors.textSecondary)
+    }
+}
+
+@Composable
+fun RecentlyAddedScreen() {
+    val env = LocalEnv.current
+    TrackListScreen("Recently added", "Newest first", env.c.library.recentlyAddedAll, "Nothing new yet", "Songs you add to the NAS or import show up here.")
+}
+
+@Composable
 fun HistoryScreen() {
     val env = LocalEnv.current
     TrackListScreen("Listening history", "Last 200 plays", env.c.library.history, "Nothing played yet", "Songs you play show up here.")
@@ -381,3 +398,15 @@ private val unusedFlow = flowOf(1)
 private val unusedCircle = CircleShape
 @Suppress("unused")
 private fun unusedDisplay(t: TrackEntity) = t.displayArtist()
+
+/** "Play all / Shuffle all" for the whole library, plus a way into the full song list. */
+@Composable
+fun PlayAllRow(count: Int) {
+    val env = LocalEnv.current
+    val c = env.c
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        LButton("Play all", { c.appScope.launch { val all = c.library.allSongsNow(); c.player.play(all) } }, Modifier.weight(1f), icon = LIcons.play, enabled = count > 0)
+        LButton("Shuffle all", { c.appScope.launch { val all = c.library.allSongsNow(); c.player.play(all, shuffle = true) } }, Modifier.weight(1f), icon = LIcons.shuffle, kind = BtnKind.Glass, enabled = count > 0)
+        com.lumen.player.ui.components.IconBtn(LIcons.list, { env.nav.navigate(Routes.ALL_SONGS) }, size = 48.dp)
+    }
+}
