@@ -95,13 +95,54 @@ class YouTubeImporter(
             }
             initialized = true
         }
-        // YouTube changes constantly; the yt-dlp bundled with the app goes stale. Refresh it every 2 days.
-        val last = enginePrefs.getLong("updated", 0)
-        if (System.currentTimeMillis() - last > 2L * 24 * 3600 * 1000) {
-            val ok = runCatching { withContext(Dispatchers.IO) { YoutubeDL.getInstance().updateYoutubeDL(context, YoutubeDL.UpdateChannel.STABLE) } }.isSuccess
-            if (ok) enginePrefs.edit().putLong("updated", System.currentTimeMillis()).apply()
+        // YouTube changes constantly; the yt-dlp bundled with the app goes stale (an old copy can't solve YouTube's
+        // current JavaScript challenges). Check every 12 hours and replace it ourselves when a newer release exists.
+        val last = enginePrefs.getLong("checked", 0)
+        if (System.currentTimeMillis() - last > 12L * 3600 * 1000) {
+            runCatching { withContext(Dispatchers.IO) { selfUpdate() } }
+                .onSuccess { enginePrefs.edit().putLong("checked", System.currentTimeMillis()).apply() }
+                .onFailure { android.util.Log.w("LumenImport", "yt-dlp update failed", it) }
         }
     }
+
+    private val ytdlpFile get() = File(context.noBackupFilesDir, "youtubedl-android/yt-dlp/yt-dlp")
+    private val web by lazy { okhttp3.OkHttpClient.Builder().followRedirects(false).build() }
+
+    /** Version actually installed, asked from yt-dlp itself (not from cached bookkeeping). */
+    private fun installedVersion(): String = runCatching {
+        YoutubeDL.getInstance().execute(YoutubeDLRequest(emptyList<String>()).apply { addOption("--version") }).out.lineSequence().map { it.trim() }.firstOrNull { it.matches(Regex("""\d{4}\.\d{2}\.\d{2}.*""")) }.orEmpty()
+    }.getOrDefault("")
+
+    private fun latestTag(): String {
+        val req = okhttp3.Request.Builder().url("https://github.com/yt-dlp/yt-dlp/releases/latest").head().build()
+        web.newCall(req).execute().use { r ->
+            val loc = r.header("Location") ?: error("No redirect from GitHub (${r.code})")
+            return loc.substringAfterLast("/tag/").trim('/')
+        }
+    }
+
+    /** Downloads the latest official yt-dlp (zipapp, includes the YouTube challenge solver) over the bundled one. */
+    private fun selfUpdate(force: Boolean = false): String {
+        val have = installedVersion()
+        val want = latestTag()
+        android.util.Log.i("LumenImport", "yt-dlp installed=$have latest=$want")
+        if (!force && have.isNotBlank() && have == want) return have
+        val tmp = File(ytdlpFile.parentFile, "yt-dlp.download")
+        val client = web.newBuilder().followRedirects(true).followSslRedirects(true).build()
+        client.newCall(okhttp3.Request.Builder().url("https://github.com/yt-dlp/yt-dlp/releases/download/$want/yt-dlp").build()).execute().use { r ->
+            if (!r.isSuccessful) error("Download failed (${r.code})")
+            ytdlpFile.parentFile?.mkdirs()
+            r.body!!.byteStream().use { i -> tmp.outputStream().use { i.copyTo(it) } }
+        }
+        if (tmp.length() < 1_000_000) { tmp.delete(); error("Downloaded yt-dlp looks incomplete") }
+        if (!tmp.renameTo(ytdlpFile)) { tmp.copyTo(ytdlpFile, overwrite = true); tmp.delete() }
+        val now = installedVersion()
+        android.util.Log.i("LumenImport", "yt-dlp updated to $now")
+        return now
+    }
+
+    /** Version string for the UI. */
+    suspend fun engineVersion(): String = withContext(Dispatchers.IO) { installedVersion() }
 
     /** Options every yt-dlp call gets. (The engine library itself adds its bundled QuickJS JavaScript runtime.) */
     private fun YoutubeDLRequest.common(cookies: Boolean) {
@@ -168,12 +209,14 @@ class YouTubeImporter(
         scope.launch {
             val msg = runCatching {
                 ensureInit()
-                withContext(Dispatchers.IO) { YoutubeDL.getInstance().updateYoutubeDL(context) }
-                "Import engine is up to date"
+                val v = withContext(Dispatchers.IO) { selfUpdate(force = false) }
+                enginePrefs.edit().putLong("checked", System.currentTimeMillis()).apply()
+                "Import engine is up to date ($v)"
             }.getOrElse { "Update failed: ${it.message}" }
             onDone(msg)
         }
     }
+
 
     private fun YoutubeDLRequest.withCookies() { account.cookieFile?.let { addOption("--cookies", it.absolutePath) } }
 
