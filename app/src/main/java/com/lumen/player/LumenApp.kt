@@ -42,26 +42,28 @@ class AppContainer(val context: Context) {
     val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
     val db = LumenDatabase.build(context)
     val settings = SettingsRepository(context)
-    val nas = NasManager(NasConfigStore(context), http).also { n ->
-        // Switching between home Wi-Fi and mobile data/Tailscale: re-pick the NAS address.
-        runCatching {
-            val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
-            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: android.net.Network) {
-                    n.onNetworkChanged()
-                    appScope.launch { kotlinx.coroutines.delay(5000); runCatching { importer.flushPendingUploads() } }
-                }
-                override fun onLost(network: android.net.Network) { n.onNetworkChanged() }
-            })
-        }
-    }
+    val nas: NasManager = NasManager(NasConfigStore(context), http)
     val art = ArtworkStore(context)
     val scanner = LibraryScanner(nas, db, art)
     val library = LibraryRepository(db)
     val metadata = MetadataRepository(context, db, http, art, nas, settings)
     val downloads = DownloadRepository(context, db, settings)
     val ytAccount = com.lumen.player.data.youtube.YouTubeAccount(context)
-    val importer = YouTubeImporter(context, db, nas, scanner, metadata, downloads, appScope, ytAccount)
+    val importer: YouTubeImporter = YouTubeImporter(context, db, nas, scanner, metadata, downloads, appScope, ytAccount)
+
+    init {
+        // Switching between home Wi-Fi and mobile data/Tailscale: re-pick the NAS address, retry parked uploads.
+        runCatching {
+            val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    nas.onNetworkChanged()
+                    appScope.launch { kotlinx.coroutines.delay(5000); runCatching { importer.flushPendingUploads() } }
+                }
+                override fun onLost(network: android.net.Network) { nas.onNetworkChanged() }
+            })
+        }
+    }
     val playerHolder = PlayerHolder()
     val queueStore = QueueStore(context)
     val player = PlayerConnection(context, library, appScope)
