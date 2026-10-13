@@ -47,7 +47,10 @@ class AppContainer(val context: Context) {
         runCatching {
             val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
             cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
-                override fun onAvailable(network: android.net.Network) { n.onNetworkChanged() }
+                override fun onAvailable(network: android.net.Network) {
+                    n.onNetworkChanged()
+                    appScope.launch { kotlinx.coroutines.delay(5000); runCatching { importer.flushPendingUploads() } }
+                }
                 override fun onLost(network: android.net.Network) { n.onNetworkChanged() }
             })
         }
@@ -67,6 +70,7 @@ class AppContainer(val context: Context) {
     /** Full refresh: scan → tags → online metadata. Safe to call repeatedly. */
     fun refreshLibrary() {
         appScope.launch {
+            runCatching { importer.flushPendingUploads() }
             val r = scanner.scan()
             if (r is ScanState.Finished) {
                 settings.setLastScan(r.at)

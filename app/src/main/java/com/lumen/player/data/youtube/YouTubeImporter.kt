@@ -288,7 +288,11 @@ class YouTubeImporter(
             val file = out ?: throw IllegalStateException(errors.joinToString("\n"))
             val niceName = sanitize(if (artist.isNotBlank()) "$artist - $title" else title.ifBlank { file.nameWithoutExtension }) + "." + file.extension
             val id = saveImported(m, file, niceName, toNas, nasFolder, title, artist)
-            val savedTo = if (toNas) "NAS › ${nasFolder.replace("/", " › ")}" else "This phone · Offline"
+            val savedTo = when {
+                !toNas -> "This phone · Offline"
+                lastParked -> "On this phone for now — uploads to NAS › ${nasFolder.replace("/", " › ")} when it’s reachable"
+                else -> "NAS › ${nasFolder.replace("/", " › ")}"
+            }
             _history.value = listOf(ImportHistoryItem(title.ifBlank { m.title }, savedTo, System.currentTimeMillis())) + _history.value
             account.markImported(m.id)
             return id to savedTo
@@ -430,15 +434,59 @@ class YouTubeImporter(
         }
     }
 
+    private val pendingPrefs = context.getSharedPreferences("pending_uploads", Context.MODE_PRIVATE)
+    private val _pendingCount = MutableStateFlow(pendingPrefs.all.size)
+    /** Imports saved on the phone because the NAS was unreachable, waiting to be uploaded. */
+    val pendingCount: StateFlow<Int> = _pendingCount.asStateFlow()
+
+    /** Uploads to the NAS, retrying a few times — a sleeping Tailscale tunnel often needs a moment to wake up. */
+    private suspend fun uploadWithRetry(file: File, relPath: String) {
+        var last: Throwable? = null
+        for (i in 0 until 3) {
+            try { nas.call { it.upload(file, relPath) }; return }
+            catch (t: Throwable) { last = t; nas.invalidate(); kotlinx.coroutines.delay(3000L * (i + 1)) }
+        }
+        throw last ?: IllegalStateException("Upload failed")
+    }
+
+    /** Retries uploads that were parked on the phone. Safe to call any time (no-op when nothing is pending). */
+    suspend fun flushPendingUploads() = withContext(Dispatchers.IO) {
+        if (pendingPrefs.all.isEmpty() || !nas.config.isConfigured) return@withContext
+        var uploaded = 0
+        for ((relPath, v) in pendingPrefs.all) {
+            val local = File(v as? String ?: continue)
+            if (!local.exists()) { pendingPrefs.edit().remove(relPath).apply(); continue }
+            val ok = runCatching { nas.call { it.upload(local, relPath) } }.isSuccess
+            if (!ok) break // NAS still unreachable — try again later
+            pendingPrefs.edit().remove(relPath).apply()
+            db.tracks().byPath(relPath)?.let { t -> db.tracks().update(t.copy(localPath = null, tagsRead = false)) }
+            local.delete()
+            uploaded++
+        }
+        _pendingCount.value = pendingPrefs.all.size
+        if (uploaded > 0) runCatching { scanner.readTags(); scanner.rebuildFolders() }
+    }
+
     private suspend fun saveImported(m: VideoMeta, file: File, name: String, toNas: Boolean, nasFolder: String, title: String, artist: String): Long =
         withContext(Dispatchers.IO) {
             val parsed = FilenameParser.parse(name)
             val relPath: String
             var localPath: String? = null
+            var parked = false
             if (toNas) {
                 _state.value = ImportState.Running(m, ImportStep.SAVE, 0.9f, "Saving to your NAS…")
                 relPath = joinPath(nasFolder, name)
-                nas.call { it.upload(file, relPath) }
+                try { uploadWithRetry(file, relPath) }
+                catch (t: Throwable) {
+                    // Don't lose the download: keep it on the phone (playable now) and upload when the NAS is reachable.
+                    android.util.Log.w("LumenImport", "NAS upload failed, parking on phone", t)
+                    val dest = File(downloads.dir, "pending-${System.currentTimeMillis()}.${file.extension}")
+                    file.copyTo(dest, overwrite = true)
+                    localPath = dest.absolutePath
+                    pendingPrefs.edit().putString(relPath, dest.absolutePath).apply()
+                    _pendingCount.value = pendingPrefs.all.size
+                    parked = true
+                }
             } else {
                 relPath = joinPath("_phone", name)
                 val dest = File(downloads.dir, "import-${System.currentTimeMillis()}.${file.extension}")
@@ -452,12 +500,15 @@ class YouTubeImporter(
                     mtime = System.currentTimeMillis(), title = title.ifBlank { parsed.title }, artist = artist.ifBlank { parsed.artist },
                     titleSource = MetaSource.FILENAME, localPath = localPath, seenScan = 0,
                 )))
-            if (toNas) runCatching { scanner.readTags() }
+            if (toNas && !parked) runCatching { scanner.readTags() }
             scanner.rebuildFolders()
             val track = db.tracks().byPath(relPath)!!
             runCatching { meta.enrichPending(5) }
+            lastParked = parked
             track.id
         }
+
+    @Volatile private var lastParked = false
 
     fun clearBatch() { if (!_batch.value.active) _batch.value = BatchState() }
 
