@@ -196,12 +196,16 @@ class YouTubeImporter(
     /** Ways to ask YouTube for the audio, tried in order until one works (YouTube treats clients differently). */
     private data class Attempt(val cookies: Boolean, val clients: String?, val label: String)
     private val attempts = listOf(
-        Attempt(false, "android_vr", "fast"),              // no JavaScript challenge to solve → quickest
+        Attempt(true, "tv", "signed in · TV"),             // TV client + your sign-in: no PO token needed for audio
+        Attempt(true, null, "signed in"),
+        Attempt(false, "android_vr", "fast"),              // no JavaScript challenge to solve
         Attempt(false, null, "standard"),
         Attempt(false, "tv_simply,mweb", "TV / mobile web"),
-        Attempt(true, null, "signed in"),
-        Attempt(true, "tv,mweb,web_safari", "signed in · TV/mobile web"),
     )
+
+    /** Full yt-dlp output of the last failed import, for "Copy details". */
+    private val diagFile get() = File(context.filesDir, "import-diagnostics.txt")
+    fun diagnostics(): String = runCatching { diagFile.readText() }.getOrDefault("No diagnostics yet.")
 
     private suspend fun download(m: VideoMeta, format: AudioFormat, toNas: Boolean, nasFolder: String, title: String, artist: String): Pair<Long, String> {
         val work = File(context.cacheDir, "yt").apply { deleteRecursively(); mkdirs() }
@@ -210,8 +214,10 @@ class YouTubeImporter(
             val order = (listOf(preferred) + attempts.indices).distinct()
                 .map { attempts[it] to it }.filter { (a, _) -> !a.cookies || account.cookieFile != null }
             val errors = mutableListOf<String>()
+            val diag = StringBuilder("Lumen import diagnostics\n${m.url}\nAndroid ${android.os.Build.VERSION.RELEASE} · ${android.os.Build.MODEL}\n")
             var out: File? = null
             for ((a, idx) in order) {
+              for (round in 0..1) {
                 work.listFiles()?.forEach { it.delete() }
                 try {
                     var timedOut = false
@@ -224,9 +230,19 @@ class YouTubeImporter(
                 } catch (t: Throwable) {
                     if (t is kotlinx.coroutines.CancellationException) throw t
                     android.util.Log.w("LumenImport", "Attempt '${a.label}' failed for ${m.url}", t)
+                    val msg = t.message.orEmpty()
+                    diag.append("\n===== ${a.label} (try ${round + 1}) =====\n").append(msg.takeLast(6000)).append('\n')
+                    // Flaky DNS (often with a VPN on): wait a moment and retry this same method once.
+                    if (round == 0 && (msg.contains("Errno 7") || msg.contains("No address associated") || msg.contains("Temporary failure in name resolution"))) {
+                        kotlinx.coroutines.delay(2500); continue
+                    }
                     errors += "${a.label}: ${ytError(t)}"
+                    break
                 }
+              }
+              if (out != null) break
             }
+            runCatching { diagFile.writeText(diag.toString()) }
             val file = out ?: throw IllegalStateException(errors.joinToString("\n"))
             val niceName = sanitize(if (artist.isNotBlank()) "$artist - $title" else title.ifBlank { file.nameWithoutExtension }) + "." + file.extension
             val id = saveImported(m, file, niceName, toNas, nasFolder, title, artist)
@@ -252,6 +268,7 @@ class YouTubeImporter(
             addOption("--convert-thumbnails", "jpg")
             addOption("-o", File(work, "%(title).120B.%(ext)s").absolutePath)
             a.clients?.let { addOption("--extractor-args", "youtube:player_client=$it") }
+            addOption("-v")
             common(a.cookies)
         }
         withContext(Dispatchers.IO) {

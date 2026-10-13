@@ -176,6 +176,8 @@ fun ImportScreen() {
                             LButton("Update engine", { c.importer.updateEngine { o.toast(it, ToastKind.Info) } }, Modifier.weight(1f), kind = BtnKind.Glass)
                         }
                         LButton("Pick an audio file instead", { pickFile.launch(arrayOf("audio/*")) }, Modifier.fillMaxWidth(), kind = BtnKind.Ghost)
+                        val cm = androidx.compose.ui.platform.LocalClipboardManager.current
+                        LButton("Copy details for support", { cm.setText(androidx.compose.ui.text.AnnotatedString(c.importer.diagnostics())); o.toast("Copied — paste it to Claude", ToastKind.Info) }, Modifier.fillMaxWidth(), icon = LIcons.clipboard, kind = BtnKind.Glass)
                     }
                 }
             }

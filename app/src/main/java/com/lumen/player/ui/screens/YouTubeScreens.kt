@@ -216,6 +216,10 @@ fun YouTubeLikesScreen() {
                         val st by c.importer.state.collectAsState()
                         (st as? com.lumen.player.data.youtube.ImportState.Running)?.let { LText(it.detail, Lumen.type.caption, Lumen.colors.textTertiary, maxLines = 2) }
                     }
+                    if (!batch.active && batch.failed > 0) {
+                        val cm = androidx.compose.ui.platform.LocalClipboardManager.current
+                        LButton("Copy details for support", { cm.setText(androidx.compose.ui.text.AnnotatedString(c.importer.diagnostics())); o.toast("Copied — paste it to Claude", ToastKind.Info) }, Modifier.fillMaxWidth(), icon = LIcons.clipboard, kind = BtnKind.Glass)
+                    }
                     batch.errors.takeLast(3).forEach { (title, why) ->
                         Column {
                             LText(title, Lumen.type.bodyS, Lumen.colors.textPrimary, maxLines = 1)
