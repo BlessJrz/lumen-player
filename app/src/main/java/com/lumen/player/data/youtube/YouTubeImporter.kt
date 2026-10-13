@@ -109,9 +109,8 @@ class YouTubeImporter(
         // (re-solving on a phone takes a long while). Setting it also stops the library adding --no-cache-dir.
         addOption("--cache-dir", File(context.filesDir, "ytdlp-cache").apply { mkdirs() }.absolutePath)
         addOption("--socket-timeout", "20")
-        // Mobile networks hand out both IPv6 and IPv4. YouTube's audio links only work from the address that asked
-        // for them; if the download leaves over the other one, YouTube answers "HTTP 403 Forbidden". Pin IPv4.
-        addOption("--force-ipv4")
+        // Note: no --force-ipv4. Many 5G networks are IPv6-only (IPv4 is translated), and forcing IPv4 makes every
+        // hostname lookup fail with "[Errno 7] No address associated with hostname".
         addOption("--retries", "5")
         addOption("--extractor-retries", "3")
         if (cookies) withCookies()
