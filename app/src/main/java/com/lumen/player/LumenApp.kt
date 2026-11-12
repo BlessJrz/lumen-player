@@ -52,6 +52,9 @@ class AppContainer(val context: Context) {
     val importer: YouTubeImporter = YouTubeImporter(context, db, nas, scanner, metadata, downloads, appScope, ytAccount)
 
     init {
+        // Connect to the NAS right away (and keep the playback connection warm) so the first song starts fast.
+        nas.prewarm()
+        nas.startKeepAlive()
         // Switching between home Wi-Fi and mobile data/Tailscale: re-pick the NAS address, retry parked uploads.
         runCatching {
             val cm = context.getSystemService(android.net.ConnectivityManager::class.java)

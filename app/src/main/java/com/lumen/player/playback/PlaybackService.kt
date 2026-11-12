@@ -72,9 +72,18 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val dataSource = DefaultDataSource.Factory(this, NasDataSource.Factory(c.nas))
+        // NAS audio goes through the on-phone cache; local files (downloads) are read directly.
+        val dataSource = DefaultDataSource.Factory(this, MediaCache.factory(this, c.nas))
+        c.nas.prewarm()
         player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSource))
+            // Start as soon as ~0.6 s of audio is buffered (default is 2.5 s) — like a streaming app.
+            .setLoadControl(
+                androidx.media3.exoplayer.DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(20_000, 120_000, 600, 1_500)
+                    .setPrioritizeTimeOverSizeThresholds(true)
+                    .build()
+            )
             .setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(), true)
             .setHandleAudioBecomingNoisy(true) // pause when headphones/Bluetooth disconnect
             .setWakeMode(C.WAKE_MODE_NETWORK)
@@ -104,6 +113,7 @@ class PlaybackService : MediaSessionService() {
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                 retries = 0
+                prefetchUpcoming()
                 val id = mediaItem?.mediaId?.toLongOrNull() ?: return
                 scope.launch(Dispatchers.IO) {
                     c.db.tracks().bumpPlay(id, System.currentTimeMillis())
@@ -118,12 +128,16 @@ class PlaybackService : MediaSessionService() {
                 } else scope.launch { saveProgress() }
             }
 
+            override fun onTimelineChanged(timeline: androidx.media3.common.Timeline, reason: Int) {
+                if (reason == Player.TIMELINE_CHANGE_REASON_PLAYLIST_CHANGED) prefetchUpcoming()
+            }
+
             override fun onAudioSessionIdChanged(audioSessionId: Int) { attachEq(audioSessionId) }
 
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 // NAS dropped (e.g. left home Wi-Fi): reconnect (LAN → Tailscale) and retry a couple of times,
                 // then move on to the next song instead of looping forever.
-                c.nas.invalidate()
+                c.nas.invalidateStream()
                 retries++
                 scope.launch {
                     delay(1500L * retries)
@@ -194,6 +208,25 @@ class PlaybackService : MediaSessionService() {
     override fun onTaskRemoved(rootIntent: Intent?) {
         val p = session?.player
         if (p == null || !p.playWhenReady || p.mediaItemCount == 0) stopSelf()
+    }
+
+    private var prefetchJob: Job? = null
+
+    /** Pulls the start of the next two songs into the cache so skipping / auto-advance is instant. */
+    private fun prefetchUpcoming() {
+        prefetchJob?.cancel()
+        val idx = player.currentMediaItemIndex
+        val uris = (1..2).mapNotNull { k ->
+            val i = if (player.shuffleModeEnabled) player.currentTimeline.let { tl ->
+                if (tl.isEmpty) -1 else (1..k).fold(idx) { acc, _ -> if (acc < 0) -1 else tl.getNextWindowIndex(acc, player.repeatMode, true) }
+            } else idx + k
+            if (i < 0 || i >= player.mediaItemCount) null else player.getMediaItemAt(i).localConfiguration?.uri
+        }.filter { it.scheme == NasUri.SCHEME }
+        if (uris.isEmpty()) return
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            delay(1500) // let the current song get going first
+            for (u in uris) { if (!isActive) break; runCatching { MediaCache.prefetch(this@PlaybackService, c.nas, u) } }
+        }
     }
 
     override fun onDestroy() {

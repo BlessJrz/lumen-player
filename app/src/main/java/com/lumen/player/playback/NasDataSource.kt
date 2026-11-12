@@ -31,7 +31,9 @@ class NasDataSource(private val nas: NasManager) : BaseDataSource(true) {
     private var file: NasFile? = null
     private var position = 0L
     private var remaining = 0L
-    private val buf = ByteArray(256 * 1024)
+    private val buf = ByteArray(512 * 1024)
+    // Start with a small read so the first audio arrives fast, then grow for throughput.
+    private var chunk = 64 * 1024
     private var bufStart = 0L
     private var bufLen = 0
     private var opened = false
@@ -41,7 +43,7 @@ class NasDataSource(private val nas: NasManager) : BaseDataSource(true) {
         transferInitializing(dataSpec)
         val path = NasUri.pathOf(dataSpec.uri)
         val f = try {
-            nas.call { it.open(path) }
+            nas.stream { it.open(path) }
         } catch (t: Throwable) {
             throw DataSourceException(t, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
         }
@@ -52,6 +54,7 @@ class NasDataSource(private val nas: NasManager) : BaseDataSource(true) {
         else if (size >= 0) size - position else C.LENGTH_UNSET.toLong()
         if (size in 0 until position) throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
         bufLen = 0
+        chunk = 64 * 1024
         opened = true
         transferStarted(dataSpec)
         return remaining
@@ -62,20 +65,21 @@ class NasDataSource(private val nas: NasManager) : BaseDataSource(true) {
         if (remaining == 0L) return C.RESULT_END_OF_INPUT
         val f = file ?: throw IOException("closed")
         if (position < bufStart || position >= bufStart + bufLen) {
-            val n = try { f.read(position, buf, 0, buf.size) } catch (t: Throwable) {
+            val n = try { f.read(position, buf, 0, chunk) } catch (t: Throwable) {
                 // Connection dropped (e.g. network switch): reconnect once and continue from the same position.
                 try {
                     runCatching { f.close() }
-                    nas.invalidate()
-                    val nf = nas.call { it.open(NasUri.pathOf(uri!!)) }
+                    nas.invalidateStream()
+                    val nf = nas.stream { it.open(NasUri.pathOf(uri!!)) }
                     file = nf
-                    nf.read(position, buf, 0, buf.size)
+                    nf.read(position, buf, 0, chunk)
                 } catch (t2: Throwable) {
                     throw DataSourceException(t2, PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED)
                 }
             }
             if (n <= 0) return C.RESULT_END_OF_INPUT
             bufStart = position; bufLen = n
+            chunk = minOf(chunk * 2, buf.size)
         }
         val inBuf = (bufStart + bufLen - position).toInt()
         var n = minOf(length, inBuf)

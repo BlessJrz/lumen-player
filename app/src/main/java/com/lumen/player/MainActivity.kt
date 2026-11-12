@@ -23,6 +23,12 @@ import com.lumen.player.ui.theme.LumenThemeProvider
 class MainActivity : ComponentActivity() {
     private val pending = PendingIntentAction()
 
+    override fun onStart() {
+        super.onStart()
+        // Coming back to the app: make sure the NAS connection is up before the user taps a song.
+        runCatching { (application as LumenApp).container.nas.prewarm() }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(

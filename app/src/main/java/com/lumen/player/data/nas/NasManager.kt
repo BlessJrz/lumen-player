@@ -99,15 +99,86 @@ class NasManager(private val store: NasConfigStore, private val http: OkHttpClie
         }.start()
     }
 
-    fun invalidate() = synchronized(lock) { runCatching { client?.close() }; client = null }
+    fun invalidate() {
+        synchronized(lock) { runCatching { client?.close() }; client = null }
+        invalidateStream()
+    }
 
-    /** Runs [block] with a connected client; reconnects once on failure. */
+    /** Runs [block] with a connected client; reconnects once — but only when the connection itself broke. */
     fun <T> call(block: (NasClient) -> T): T = try {
         block(client())
     } catch (t: Throwable) {
-        if (t is IllegalStateException && !config.isConfigured) throw t
-        invalidate()
+        if (!isConnectionError(t)) throw t
+        synchronized(lock) { runCatching { client?.close() }; client = null }
         block(client())
+    }
+
+    // ---------- Playback connection ----------
+    // Playback gets its own SMB session so library scans, tag reads and imports never queue in front of a song,
+    // and a failing background call can't tear down the stream. It is kept warm so songs start right away.
+
+    @Volatile private var stream: NasClient? = null
+    private val streamLock = Any()
+
+    private fun streamClient(): NasClient = synchronized(streamLock) {
+        stream?.let { return it }
+        val c = config
+        if (!c.isConfigured) throw IllegalStateException("NAS not set up")
+        // Reuse the host the main connection already found reachable — skips the probe entirely.
+        val preferred = (status.value as? NasStatus.Connected)?.host
+        val hosts = (listOfNotNull(preferred) + orderedHosts(c)).distinct()
+        var last: Throwable? = null
+        for (h in hosts) {
+            try { return create(h, c).also { stream = it; _status.value = NasStatus.Connected(h, remote = h == c.remoteHost && h != c.lanHost) } }
+            catch (t: Throwable) { last = t }
+        }
+        throw last ?: IllegalStateException("Unreachable")
+    }
+
+    fun invalidateStream() = synchronized(streamLock) { runCatching { stream?.close() }; stream = null }
+
+    /** Like [call], on the dedicated playback connection. */
+    fun <T> stream(block: (NasClient) -> T): T = try {
+        block(streamClient())
+    } catch (t: Throwable) {
+        if (!isConnectionError(t)) throw t
+        invalidateStream()
+        block(streamClient())
+    }
+
+    /** Opens both connections in the background so the first tap on a song doesn't pay for connecting. */
+    fun prewarm() {
+        if (!config.isConfigured) return
+        Thread { runCatching { streamClient() }; runCatching { client() } }.start()
+    }
+
+    private var keepAlive: Thread? = null
+
+    /**
+     * Pings the playback connection every 45 s. Idle SMB sessions get dropped by the NAS and an idle Tailscale
+     * tunnel takes seconds to wake — both showed up as songs taking ages to start.
+     */
+    fun startKeepAlive() {
+        if (keepAlive != null) return
+        keepAlive = Thread {
+            while (true) {
+                try { Thread.sleep(45_000) } catch (_: InterruptedException) { return@Thread }
+                val s = stream ?: continue
+                try { s.exists("") } catch (t: Throwable) { if (isConnectionError(t)) invalidateStream() }
+            }
+        }.apply { isDaemon = true; name = "nas-keepalive"; start() }
+    }
+
+    companion object {
+        /** True for broken-connection errors (worth reconnecting), false for e.g. "file not found". */
+        fun isConnectionError(t: Throwable): Boolean {
+            val chain = generateSequence(t) { it.cause }.toList()
+            if (chain.any { it is java.io.FileNotFoundException }) return false
+            val text = chain.joinToString(" ") { it.javaClass.name + " " + (it.message ?: "") }
+            if (listOf("STATUS_OBJECT_NAME_NOT_FOUND", "STATUS_OBJECT_PATH_NOT_FOUND", "STATUS_ACCESS_DENIED",
+                    "STATUS_OBJECT_NAME_COLLISION", "STATUS_BAD_NETWORK_NAME", "STATUS_LOGON_FAILURE", "No share selected").any { it in text }) return false
+            return true
+        }
     }
 
     suspend fun <T> io(block: (NasClient) -> T): T = withContext(Dispatchers.IO) { call(block) }

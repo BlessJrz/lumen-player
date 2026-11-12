@@ -186,6 +186,15 @@ private fun Section(cat: SetCat, s: AppSettings) {
                 })
                 Divider()
                 SettingRow(LIcons.download, "Manage downloads", null, onClick = { env.nav.navigate(Routes.DOWNLOADS) })
+                Divider()
+                var cacheBytes by remember { mutableStateOf(0L) }
+                LaunchedEffect(Unit) { cacheBytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.lumen.player.playback.MediaCache.sizeBytes(c.context) } }
+                SettingRow(LIcons.refresh, "Song cache", "${fmtBytes(cacheBytes)} of 2 GB · recently played songs start instantly", RowControl.Value, value = "Clear", onClick = {
+                    scope.launch {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.lumen.player.playback.MediaCache.clear(c.context) }
+                        cacheBytes = 0; o.toast("Song cache cleared", ToastKind.Info)
+                    }
+                })
             }
         }
         SetCat.Metadata -> {
